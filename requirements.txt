@@ -10,4 +10,5 @@ jax
 equinox
 optax
 diffrax
+marimo
 jpc @ git+https://github.com/thebuckleylab/jpc.git
