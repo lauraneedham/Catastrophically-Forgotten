@@ -58,20 +58,44 @@ def run_forgetting_experiment(
     num_inputs: int = 784,
     num_hidden: int = 100,
     num_outputs: int = 10,
+    activation_type: str = "sigmoid",
     bias: bool = False,
     verbose: bool = False,
+    record_initial_baseline: bool = True,
 ):
     """Run a simple forgetting experiment with a backprop model."""
     if model_type != "backprop":
         raise NotImplementedError(f"Model type '{model_type}' is not implemented yet.")
 
-    model = MultiLayerPerceptron(num_inputs=num_inputs, num_hidden=num_hidden, num_outputs=num_outputs, bias=bias)
+    model = MultiLayerPerceptron(
+        num_inputs=num_inputs,
+        num_hidden=num_hidden,
+        num_outputs=num_outputs,
+        activation_type=activation_type,
+        bias=bias,
+    )
     optimizer = BasicOptimizer(model.parameters(), lr=lr if lr is not None else 0.01)
 
-    phase1_results = train_model(model, train_loader_old, valid_loader_old, optimizer, num_epochs=num_epochs_phase1, verbose=verbose)
+    phase1_results = train_model(
+        model,
+        train_loader_old,
+        valid_loader_old,
+        optimizer,
+        num_epochs=num_epochs_phase1,
+        verbose=verbose,
+        record_initial_baseline=record_initial_baseline,
+    )
 
     phase2_loader = train_loader_new if condition == "sequential" else train_loader_full
-    phase2_results = train_model(model, phase2_loader, valid_loader_old, optimizer, num_epochs=num_epochs_phase2, verbose=verbose)
+    phase2_results = train_model(
+        model,
+        phase2_loader,
+        valid_loader_old,
+        optimizer,
+        num_epochs=num_epochs_phase2,
+        verbose=verbose,
+        record_initial_baseline=record_initial_baseline,
+    )
 
     old_class_acc_trace = phase1_results["avg_valid_accuracies"] + phase2_results["avg_valid_accuracies"]
     new_class_acc_final = evaluate_accuracy_for_loader(model, valid_loader_new)

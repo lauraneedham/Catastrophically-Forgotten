@@ -91,20 +91,43 @@ class MultiLayerPerceptron(nn.Module):
         return gradient_dict
 
 
-class BasicOptimizer:
-    """Thin wrapper around torch.optim.SGD for the project code."""
+class BasicOptimizer(torch.optim.Optimizer):
+    """A minimal SGD optimizer that mirrors the notebook implementation."""
 
-    def __init__(self, parameters: Iterable[torch.nn.Parameter] | Iterable[dict], lr: float):
-        self.optimizer = torch.optim.SGD(parameters, lr=lr)
+    def __init__(
+        self,
+        parameters: Iterable[torch.nn.Parameter] | Iterable[dict],
+        lr: float = 0.01,
+        weight_decay: float = 0.0,
+    ):
+        if lr < 0.0:
+            raise ValueError(f"Invalid learning rate: {lr}")
+        if weight_decay < 0.0:
+            raise ValueError(f"Invalid weight_decay value: {weight_decay}")
 
-    def zero_grad(self) -> None:
-        self.optimizer.zero_grad()
+        defaults = dict(lr=lr, weight_decay=weight_decay)
+        super().__init__(parameters, defaults)
 
-    def step(self) -> None:
-        self.optimizer.step()
+    def step(self, closure=None) -> None:
+        loss = None
+        if closure is not None:
+            with torch.enable_grad():
+                loss = closure()
 
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self.optimizer, name)
+        for group in self.param_groups:
+            for param in group["params"]:
+                if param.grad is None:
+                    continue
+
+                if group["weight_decay"] != 0:
+                    param.grad = param.grad.add(param, alpha=group["weight_decay"])
+
+                param.data.add_(param.grad, alpha=-group["lr"])
+
+        return loss
+
+    def zero_grad(self, set_to_none: bool = True) -> None:
+        super().zero_grad(set_to_none=set_to_none)
 
 
 def update_results_by_class_in_place(y, y_pred, result_dict, dataset="train", num_classes=10):
@@ -169,7 +192,15 @@ def train_epoch(model: nn.Module, train_loader, valid_loader, optimizer: BasicOp
     return epoch_results_dict
 
 
-def train_model(model, train_loader, valid_loader, optimizer, num_epochs: int = 5, verbose: bool = False):
+def train_model(
+    model,
+    train_loader,
+    valid_loader,
+    optimizer,
+    num_epochs: int = 5,
+    verbose: bool = False,
+    record_initial_baseline: bool = True,
+):
     """Train a model across epochs and aggregate notebook-style results."""
     results_dict = {
         "avg_train_losses": [],
@@ -179,7 +210,7 @@ def train_model(model, train_loader, valid_loader, optimizer, num_epochs: int = 
     }
 
     for e in tqdm(range(num_epochs)):
-        no_train = True if e == 0 else False
+        no_train = record_initial_baseline and e == 0
         latest_epoch_results_dict = train_epoch(model, train_loader, valid_loader, optimizer, no_train=no_train)
 
         for key, result in latest_epoch_results_dict.items():
