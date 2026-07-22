@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from typing import Any, Dict, Iterable
+from typing import Any, Dict, Iterable, Sequence
 
 import numpy as np
 import torch
@@ -12,13 +12,14 @@ from tqdm import tqdm
 
 
 class MultiLayerPerceptron(nn.Module):
-    """Simple two-layer MLP used as the backpropagation baseline."""
+    """Multi-layer Perceptron supporting flexible depth and width."""
 
     def __init__(
         self,
         num_inputs: int | None = None,
-        num_hidden: int = 100,
+        num_hidden: int | Sequence[int] = 100,
         num_outputs: int = 10,
+        num_hidden_layers: int = 1,
         activation_type: str = "sigmoid",
         bias: bool = False,
     ):
@@ -27,33 +28,52 @@ class MultiLayerPerceptron(nn.Module):
             num_inputs = 784
 
         self.num_inputs = num_inputs
-        self.num_hidden = num_hidden
         self.num_outputs = num_outputs
         self.activation_type = activation_type
         self.bias = bias
 
-        self.lin1 = nn.Linear(num_inputs, num_hidden, bias=bias)
-        self.lin2 = nn.Linear(num_hidden, num_outputs, bias=bias)
+        if isinstance(num_hidden, (list, tuple)):
+            self.hidden_dims = list(num_hidden)
+            self.num_hidden_layers = len(self.hidden_dims)
+            self.num_hidden = self.hidden_dims[0] if len(self.hidden_dims) > 0 else 100
+        else:
+            self.num_hidden = num_hidden
+            self.num_hidden_layers = max(1, num_hidden_layers)
+            self.hidden_dims = [num_hidden] * self.num_hidden_layers
+
+        layers = []
+        in_dim = num_inputs
+        for h_dim in self.hidden_dims:
+            layers.append(nn.Linear(in_dim, h_dim, bias=bias))
+            in_dim = h_dim
+        layers.append(nn.Linear(in_dim, num_outputs, bias=bias))
+
+        self.layers = nn.ModuleList(layers)
+        self.lin1 = self.layers[0]
+        self.lin2 = self.layers[-1]
 
         self._store_initial_weights_biases()
         self._set_activation()
         self.softmax = nn.Softmax(dim=1)
 
     def _store_initial_weights_biases(self) -> None:
+        self.init_weights = [layer.weight.data.clone() for layer in self.layers]
         self.init_lin1_weight = self.lin1.weight.data.clone()
         self.init_lin2_weight = self.lin2.weight.data.clone()
         if self.bias:
+            self.init_biases = [layer.bias.data.clone() for layer in self.layers if layer.bias is not None]
             self.init_lin1_bias = self.lin1.bias.data.clone()
             self.init_lin2_bias = self.lin2.bias.data.clone()
 
     def _set_activation(self) -> None:
-        if self.activation_type.lower() == "sigmoid":
+        act_str = self.activation_type.lower()
+        if act_str == "sigmoid":
             self.activation = nn.Sigmoid()
-        elif self.activation_type.lower() == "tanh":
+        elif act_str == "tanh":
             self.activation = nn.Tanh()
-        elif self.activation_type.lower() == "relu":
+        elif act_str == "relu":
             self.activation = nn.ReLU()
-        elif self.activation_type.lower() == "identity":
+        elif act_str == "identity":
             self.activation = nn.Identity()
         else:
             raise NotImplementedError(
@@ -62,29 +82,31 @@ class MultiLayerPerceptron(nn.Module):
             )
 
     def forward(self, X: torch.Tensor, y=None) -> torch.Tensor:
-        h = self.activation(self.lin1(X.reshape(-1, self.num_inputs)))
-        return self.softmax(self.lin2(h))
+        out = X.reshape(-1, self.num_inputs)
+        for layer in self.layers[:-1]:
+            out = self.activation(layer(out))
+        out = self.layers[-1](out)
+        return self.softmax(out)
 
     def forward_backprop(self, X: torch.Tensor) -> torch.Tensor:
         return self.forward(X)
 
     def list_parameters(self) -> list[str]:
         params_list: list[str] = []
-        for layer_str in ["lin1", "lin2"]:
-            params_list.append(f"{layer_str}_weight")
+        for i in range(len(self.layers)):
+            params_list.append(f"layer_{i}_weight")
             if self.bias:
-                params_list.append(f"{layer_str}_bias")
+                params_list.append(f"layer_{i}_bias")
         return params_list
 
     def gather_gradient_dict(self) -> Dict[str, Any]:
         gradient_dict: Dict[str, Any] = {}
-        for param_name in self.list_parameters():
-            layer_str, param_str = param_name.split("_")
-            layer = getattr(self, layer_str)
-            grad = getattr(layer, param_str).grad
-            if grad is None:
+        for i, layer in enumerate(self.layers):
+            if layer.weight.grad is None:
                 raise RuntimeError("No gradient was computed")
-            gradient_dict[param_name] = grad.detach().clone().numpy()
+            gradient_dict[f"layer_{i}_weight"] = layer.weight.grad.detach().clone().numpy()
+            if self.bias and layer.bias is not None and layer.bias.grad is not None:
+                gradient_dict[f"layer_{i}_bias"] = layer.bias.grad.detach().clone().numpy()
         return gradient_dict
 
 
@@ -149,11 +171,17 @@ def train_epoch(model: nn.Module, train_loader, valid_loader, optimizer: BasicOp
         for sub_str in ["correct_by_class", "seen_by_class"]:
             epoch_results[f"{dataset}_{sub_str}"] = {i: 0 for i in range(model.num_outputs)}
 
-    model.train()
+    if no_train:
+        model.eval()
+    else:
+        model.train()
     train_losses = []
     train_acc = []
     for X, y in train_loader:
-        y_pred = model(X, y=y)
+        if no_train:
+            y_pred = model(X)
+        else:
+            y_pred = model(X, y=y)
         loss = criterion(torch.log(y_pred), y)
         acc = (torch.argmax(y_pred.detach(), axis=1) == y).sum() / len(y)
         train_losses.append(loss.item() * len(y))

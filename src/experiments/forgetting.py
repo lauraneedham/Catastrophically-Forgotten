@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Sequence
 
 import matplotlib.pyplot as plt
+import numpy as np
 import torch
 
 from src.data import restrict_classes
@@ -56,7 +57,8 @@ def run_forgetting_experiment(
     num_epochs_phase2: int = 6,
     lr: Optional[float] = None,
     num_inputs: int = 784,
-    num_hidden: int = 100,
+    num_hidden: int | Sequence[int] = 100,
+    num_hidden_layers: int = 1,
     num_outputs: int = 10,
     activation_type: str = "sigmoid",
     bias: bool = False,
@@ -68,6 +70,7 @@ def run_forgetting_experiment(
             num_inputs=num_inputs,
             num_hidden=num_hidden,
             num_outputs=num_outputs,
+            num_hidden_layers=num_hidden_layers,
             activation_type=activation_type,
             bias=bias,
         )
@@ -79,6 +82,7 @@ def run_forgetting_experiment(
             num_inputs=num_inputs,
             num_hidden=num_hidden,
             num_outputs=num_outputs,
+            num_hidden_layers=num_hidden_layers,
             activation_type=activation_type,
             bias=bias,
             lr=lr if lr is not None else 1e-3,
@@ -111,8 +115,11 @@ def run_forgetting_experiment(
 
     return {
         "model": model,
-        "old_class_acc_trace": old_class_acc_trace,
-        "new_class_acc_final": new_class_acc_final,
+        "model_type": model_type,
+        "num_hidden": model.hidden_dims,
+        "num_hidden_layers": model.num_hidden_layers,
+        "old_class_acc_trace": [float(x) for x in old_class_acc_trace],
+        "new_class_acc_final": float(new_class_acc_final),
         "phase1_epochs": num_epochs_phase1,
         "phase1_results": phase1_results,
         "phase2_results": phase2_results,

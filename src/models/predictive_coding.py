@@ -12,14 +12,18 @@ import optax
 import jpc
 
 
+from typing import Sequence
+
+
 class PredictiveCodingMLP(MultiLayerPerceptron):
-    """Predictive Coding MLP using jpc (JAX)."""
+    """Predictive Coding MLP using jpc (JAX) supporting variable hidden layers and dimensions."""
 
     def __init__(
         self,
         num_inputs: int | None = None,
-        num_hidden: int = 100,
+        num_hidden: int | Sequence[int] = 100,
         num_outputs: int = 10,
+        num_hidden_layers: int = 1,
         activation_type: str = "sigmoid",
         bias: bool = False,
         lr: float = 1e-3,
@@ -29,6 +33,7 @@ class PredictiveCodingMLP(MultiLayerPerceptron):
             num_inputs=num_inputs,
             num_hidden=num_hidden,
             num_outputs=num_outputs,
+            num_hidden_layers=num_hidden_layers,
             activation_type=activation_type,
             bias=bias,
         )
@@ -40,15 +45,16 @@ class PredictiveCodingMLP(MultiLayerPerceptron):
             act_str = "sigmoid"
 
         key = jax.random.PRNGKey(self.seed)
-        self.jpc_model = jpc.make_mlp(
-            key,
-            input_dim=self.num_inputs,
-            width=self.num_hidden,
-            depth=2,
-            output_dim=self.num_outputs,
-            act_fn=act_str,
-            use_bias=self.bias,
-        )
+        dims = [self.num_inputs] + self.hidden_dims + [self.num_outputs]
+        subkeys = jax.random.split(key, len(dims) - 1)
+
+        jpc_layers = []
+        for i in range(len(dims) - 1):
+            act_fn_l = eqx.nn.Identity() if i == 0 else jpc.get_act_fn(act_str)
+            linear = eqx.nn.Linear(dims[i], dims[i + 1], use_bias=self.bias, key=subkeys[i])
+            jpc_layers.append(eqx.nn.Sequential([eqx.nn.Lambda(act_fn_l), linear]))
+
+        self.jpc_model = jpc_layers
         self.jpc_optim = optax.adam(self.lr)
         self.jpc_opt_state = self.jpc_optim.init((eqx.filter(self.jpc_model, eqx.is_array), None))
 
@@ -57,17 +63,12 @@ class PredictiveCodingMLP(MultiLayerPerceptron):
     def sync_jpc_to_pytorch(self) -> None:
         """Copy weights and biases from JPC model into PyTorch parameters."""
         with torch.no_grad():
-            w1 = np.array(self.jpc_model[0][1].weight)
-            self.lin1.weight.copy_(torch.from_numpy(w1))
-            if self.bias and getattr(self.jpc_model[0][1], "bias", None) is not None:
-                b1 = np.array(self.jpc_model[0][1].bias)
-                self.lin1.bias.copy_(torch.from_numpy(b1))
-
-            w2 = np.array(self.jpc_model[1][1].weight)
-            self.lin2.weight.copy_(torch.from_numpy(w2))
-            if self.bias and getattr(self.jpc_model[1][1], "bias", None) is not None:
-                b2 = np.array(self.jpc_model[1][1].bias)
-                self.lin2.bias.copy_(torch.from_numpy(b2))
+            for i, layer in enumerate(self.layers):
+                w = np.array(self.jpc_model[i][1].weight)
+                layer.weight.copy_(torch.from_numpy(w))
+                if self.bias and getattr(self.jpc_model[i][1], "bias", None) is not None:
+                    b = np.array(self.jpc_model[i][1].bias)
+                    layer.bias.copy_(torch.from_numpy(b))
 
     def step_batch(self, X: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         """Perform a Predictive Coding update step on a single mini-batch."""
