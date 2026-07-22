@@ -13,7 +13,7 @@ import torch
 import torchvision
 
 
-def download_mnist(train_prop: float = 0.8, keep_prop: float = 0.5):
+def download_mnist(train_prop: float = 0.8, keep_prop: float = 1.0):
     """Download MNIST and return train/validation/test splits."""
     valid_prop = 1 - train_prop
     discard_prop = 1 - keep_prop
@@ -36,14 +36,24 @@ def download_mnist(train_prop: float = 0.8, keep_prop: float = 0.5):
             root=str(data_dir), train=False, download=True, transform=transform
         )
 
-    train_set, valid_set, _ = torch.utils.data.random_split(
-        full_train_set,
-        [train_prop * keep_prop, valid_prop * keep_prop, discard_prop],
-    )
-    test_set, _ = torch.utils.data.random_split(
-        full_test_set,
-        [keep_prop, discard_prop],
-    )
+    if discard_prop > 0:
+        train_set, valid_set, _ = torch.utils.data.random_split(
+            full_train_set,
+            [train_prop * keep_prop, valid_prop * keep_prop, discard_prop],
+        )
+        test_set, _ = torch.utils.data.random_split(
+            full_test_set,
+            [keep_prop, discard_prop],
+        )
+    else:
+        # keep_prop >= 1.0: use all of MNIST (the notebook's setting). Only split
+        # train into train/valid; avoids random_split's empty-split warnings for
+        # a zero-length discard, and keeps the full test set.
+        train_set, valid_set = torch.utils.data.random_split(
+            full_train_set,
+            [train_prop, valid_prop],
+        )
+        test_set = full_test_set
 
     print("Number of examples retained:")
     print(f"  {len(train_set)} (training)")
