@@ -1,0 +1,5 @@
+variant,mean_macro_accuracy,std_macro_accuracy,worst_digit_accuracy,all_finite,eligible
+oja,80.27364488789974,0.0,60.48472075869336,True,True
+centered,10.0,0.0,0.0,True,False
+hard_wta,10.0,0.0,0.0,True,False
+soft_wta,10.0,0.0,0.0,True,False

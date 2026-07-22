@@ -1,0 +1,2 @@
+variant,mean_macro_accuracy,std_macro_accuracy,worst_digit_accuracy,all_finite,eligible
+oja,83.97581342614751,0.516574608521936,69.35866983372921,True,True

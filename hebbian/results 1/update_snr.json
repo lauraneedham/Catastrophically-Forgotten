@@ -1,0 +1,10 @@
+{
+  "lin1_weight": {
+    "elementwise_snr": 0.0,
+    "vector_snr": 0.0
+  },
+  "lin2_weight": {
+    "elementwise_snr": 1.174167513847351,
+    "vector_snr": 1.339618444442749
+  }
+}

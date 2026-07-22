@@ -1,0 +1,110 @@
+{
+  "quick_run": true,
+  "run_final_test": false,
+  "screen_seeds": [
+    0
+  ],
+  "final_seeds": [
+    0
+  ],
+  "experiment": {
+    "seed": 0,
+    "batch_size": 64,
+    "train_per_class": 5000,
+    "iid_max_steps": 1200,
+    "phase1_max_steps": 800,
+    "phase2_max_steps": 800,
+    "eval_every_steps": 100,
+    "old_target_accuracy": 10.0,
+    "matched_new_accuracies": [
+      70.0,
+      80.0,
+      90.0
+    ],
+    "device": "cuda"
+  },
+  "candidates": [
+    {
+      "num_inputs": 784,
+      "num_hidden": 100,
+      "num_outputs": 10,
+      "variant": "centered",
+      "activation_type": "sigmoid",
+      "bias": false,
+      "hidden_lr": 0.0001,
+      "output_lr": 0.02,
+      "output_rule": "teacher_hebb",
+      "temperature": 0.2,
+      "top_k": 5,
+      "normalize_hidden": false,
+      "weight_decay": 0.0,
+      "eps": 1e-08
+    },
+    {
+      "num_inputs": 784,
+      "num_hidden": 100,
+      "num_outputs": 10,
+      "variant": "oja",
+      "activation_type": "sigmoid",
+      "bias": false,
+      "hidden_lr": 0.001,
+      "output_lr": 0.1,
+      "output_rule": "delta",
+      "temperature": 0.2,
+      "top_k": 5,
+      "normalize_hidden": true,
+      "weight_decay": 0.0,
+      "eps": 1e-08
+    },
+    {
+      "num_inputs": 784,
+      "num_hidden": 100,
+      "num_outputs": 10,
+      "variant": "hard_wta",
+      "activation_type": "sigmoid",
+      "bias": false,
+      "hidden_lr": 0.0001,
+      "output_lr": 0.05,
+      "output_rule": "delta",
+      "temperature": 0.2,
+      "top_k": 5,
+      "normalize_hidden": true,
+      "weight_decay": 0.0,
+      "eps": 1e-08
+    },
+    {
+      "num_inputs": 784,
+      "num_hidden": 100,
+      "num_outputs": 10,
+      "variant": "soft_wta",
+      "activation_type": "sigmoid",
+      "bias": false,
+      "hidden_lr": 0.0001,
+      "output_lr": 0.05,
+      "output_rule": "delta",
+      "temperature": 0.2,
+      "top_k": 5,
+      "normalize_hidden": true,
+      "weight_decay": 0.0,
+      "eps": 1e-08
+    }
+  ],
+  "selected": {
+    "num_inputs": 784,
+    "num_hidden": 100,
+    "num_outputs": 10,
+    "variant": "oja",
+    "activation_type": "sigmoid",
+    "bias": false,
+    "hidden_lr": 0.001,
+    "output_lr": 0.1,
+    "output_rule": "delta",
+    "temperature": 0.2,
+    "top_k": 5,
+    "normalize_hidden": true,
+    "weight_decay": 0.0,
+    "eps": 1e-08
+  },
+  "torch_version": "2.11.0+cu128",
+  "torchvision_version": "0.26.0+cu128"
+}
