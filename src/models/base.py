@@ -1,4 +1,5 @@
 """Compatibility wrapper for the minimal backpropagation implementation."""
+import torch.nn as nn
 
 from backpropagation import (
     BasicOptimizer,

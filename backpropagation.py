@@ -104,9 +104,9 @@ class MultiLayerPerceptron(nn.Module):
         for i, layer in enumerate(self.layers):
             if layer.weight.grad is None:
                 raise RuntimeError("No gradient was computed")
-            gradient_dict[f"layer_{i}_weight"] = layer.weight.grad.detach().clone().numpy()
+            gradient_dict[f"layer_{i}_weight"] = layer.weight.grad.detach().cpu().clone().numpy()
             if self.bias and layer.bias is not None and layer.bias.grad is not None:
-                gradient_dict[f"layer_{i}_bias"] = layer.bias.grad.detach().clone().numpy()
+                gradient_dict[f"layer_{i}_bias"] = layer.bias.grad.detach().cpu().clone().numpy()
         return gradient_dict
 
 
@@ -117,14 +117,17 @@ class BasicOptimizer(torch.optim.Optimizer):
         self,
         parameters: Iterable[torch.nn.Parameter] | Iterable[dict],
         lr: float = 0.01,
+        momentum: float = 0.0,
         weight_decay: float = 0.0,
     ):
         if lr < 0.0:
             raise ValueError(f"Invalid learning rate: {lr}")
+        if momentum < 0.0:
+            raise ValueError(f"Invalid momentum value: {momentum}")
         if weight_decay < 0.0:
             raise ValueError(f"Invalid weight_decay value: {weight_decay}")
 
-        defaults = dict(lr=lr, weight_decay=weight_decay)
+        defaults = dict(lr=lr, momentum=momentum, weight_decay=weight_decay)
         super().__init__(parameters, defaults)
 
     def step(self, closure=None) -> None:
@@ -134,14 +137,31 @@ class BasicOptimizer(torch.optim.Optimizer):
                 loss = closure()
 
         for group in self.param_groups:
+            lr = group["lr"]
+            momentum = group["momentum"]
+            weight_decay = group["weight_decay"]
             for param in group["params"]:
                 if param.grad is None:
                     continue
 
-                if group["weight_decay"] != 0:
-                    param.grad = param.grad.add(param, alpha=group["weight_decay"])
+                grad = param.grad
+                if weight_decay != 0:
+                    grad = grad.add(param, alpha=weight_decay)
 
-                param.data.add_(param.grad, alpha=-group["lr"])
+                if momentum != 0:
+                    # Classic SGD momentum (no dampening / nesterov): keep a
+                    # per-parameter velocity buffer in the optimizer state, as
+                    # torch.optim.SGD does.
+                    state = self.state[param]
+                    buf = state.get("momentum_buffer")
+                    if buf is None:
+                        buf = grad.clone().detach()
+                        state["momentum_buffer"] = buf
+                    else:
+                        buf.mul_(momentum).add_(grad)
+                    grad = buf
+
+                param.data.add_(grad, alpha=-lr)
 
         return loss
 
@@ -171,6 +191,8 @@ def train_epoch(model: nn.Module, train_loader, valid_loader, optimizer: BasicOp
         for sub_str in ["correct_by_class", "seen_by_class"]:
             epoch_results[f"{dataset}_{sub_str}"] = {i: 0 for i in range(model.num_outputs)}
 
+    device = next(model.parameters()).device
+
     if no_train:
         model.eval()
     else:
@@ -178,6 +200,7 @@ def train_epoch(model: nn.Module, train_loader, valid_loader, optimizer: BasicOp
     train_losses = []
     train_acc = []
     for X, y in train_loader:
+        X, y = X.to(device), y.to(device)
         if no_train:
             y_pred = model(X)
         else:
@@ -186,7 +209,8 @@ def train_epoch(model: nn.Module, train_loader, valid_loader, optimizer: BasicOp
         acc = (torch.argmax(y_pred.detach(), axis=1) == y).sum() / len(y)
         train_losses.append(loss.item() * len(y))
         train_acc.append(acc.item() * len(y))
-        update_results_by_class_in_place(y, y_pred.detach(), epoch_results, dataset="train", num_classes=model.num_outputs)
+        # per-class bookkeeping runs in NumPy, so move predictions/targets to CPU
+        update_results_by_class_in_place(y.cpu(), y_pred.detach().cpu(), epoch_results, dataset="train", num_classes=model.num_outputs)
 
         optimizer.zero_grad()
         if not no_train:
@@ -202,12 +226,13 @@ def train_epoch(model: nn.Module, train_loader, valid_loader, optimizer: BasicOp
     valid_acc = []
     with torch.no_grad():
         for X, y in valid_loader:
+            X, y = X.to(device), y.to(device)
             y_pred = model(X)
             loss = criterion(torch.log(y_pred), y)
             acc = (torch.argmax(y_pred, axis=1) == y).sum() / len(y)
             valid_losses.append(loss.item() * len(y))
             valid_acc.append(acc.item() * len(y))
-            update_results_by_class_in_place(y, y_pred.detach(), epoch_results, dataset="valid", num_classes=model.num_outputs)
+            update_results_by_class_in_place(y.cpu(), y_pred.detach().cpu(), epoch_results, dataset="valid", num_classes=model.num_outputs)
 
     num_items = len(valid_loader.dataset)
     epoch_results["avg_valid_losses"] = np.sum(valid_losses) / num_items
@@ -261,8 +286,10 @@ def evaluate_accuracy_stats(model: nn.Module, loader):
     correct_by_class: Counter = Counter()
     seen_by_class: Counter = Counter()
 
+    device = next(model.parameters()).device
     with torch.no_grad():
         for X, y in loader:
+            X, y = X.to(device), y.to(device)
             y_pred = model(X)
             pred = torch.argmax(y_pred, axis=1)
             correct += (pred == y).sum().item()

@@ -18,8 +18,8 @@ def plot_weights(mlp, shared_colorbar=False):
 
     for param_name in param_names:
         layer, param_type = param_name.split("_")
-        init_params = getattr(mlp, f"init_{layer}_{param_type}").detach().numpy()
-        last_params = getattr(getattr(mlp, layer), param_type).detach().numpy()
+        init_params = getattr(mlp, f"init_{layer}_{param_type}").detach().cpu().numpy()
+        last_params = getattr(getattr(mlp, layer), param_type).detach().cpu().numpy()
         diff_params = last_params - init_params
         separator = np.full((1, init_params.shape[-1]), np.nan)
         params_image = np.vstack([init_params, separator, last_params, separator, diff_params])
