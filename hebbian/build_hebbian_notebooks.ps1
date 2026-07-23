@@ -196,8 +196,11 @@ sizes["test_set"] = len(test_set)
 for name, size in sizes.items():
     print(f"{name:>22}: {size:,}")
 
-assert len(train_set) == 48_000
-assert len(valid_set) == 12_000
+# torchvision's fractional random_split may assign the one-image rounding
+# remainder to training (48,001/11,999 instead of 48,000/12,000).
+assert len(train_set) + len(valid_set) == 60_000
+assert abs(len(train_set) - 48_000) <= 1
+assert abs(len(valid_set) - 12_000) <= 1
 assert len(test_set) == 10_000
 assert OLD_CLASSES == [0, 1, 2, 3, 4, 5]
 assert NEW_CLASSES == [6, 7, 8, 9]

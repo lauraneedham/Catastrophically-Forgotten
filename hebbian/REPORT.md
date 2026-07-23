@@ -56,11 +56,14 @@ the team-owned experiment file.
 The shared `download_mnist(train_prop=0.8, keep_prop=1.0)` call uses all 70,000
 MNIST images:
 
-- 48,000 images for training;
-- 12,000 images for validation;
+- approximately 48,000 images for training;
+- approximately 12,000 images for validation;
 - 10,000 official test images retained but not used during development.
 
 A fixed data-split seed is set before the shared helper is called.
+With the current PyTorch fractional split, the observed deterministic sizes are
+48,001 training and 11,999 validation images because the one-image rounding
+remainder is assigned to the first split.
 
 ### 3.2 Continual-learning task
 

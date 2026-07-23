@@ -34,7 +34,9 @@ model, so the team's SGD consensus is not applied to this learning rule.
 
 ## Shared protocol
 
-- Full MNIST: 48,000 training, 12,000 validation, 10,000 untouched test images.
+- Full MNIST: approximately 48,000 training, 12,000 validation, and 10,000
+  untouched test images. PyTorch may allocate the fractional-split remainder as
+  48,001 training and 11,999 validation images.
 - Old classes: `0, 1, 2, 3, 4, 5`.
 - New classes: `6, 7, 8, 9`.
 - Batch size: 32.
