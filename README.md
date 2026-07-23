@@ -6,6 +6,22 @@ This repository contains a modular PyTorch project for studying catastrophic for
 
 - Compare backpropagation against alternative learning rules in a forgetting experiment.
 
+## Hebbian architecture experiments
+
+The `hebbian/` folder contains the repository-integrated local Hebbian/Oja
+implementation and three Colab notebooks:
+
+- `784 -> 100 -> 10`
+- `784 -> 1000 -> 10`
+- `784 -> 300 -> 300 -> 10`
+
+These notebooks import shared `src/data.py` and the unchanged
+`src/experiments/forgetting.py`. They use full MNIST, batch size 32, digits
+`0-5` followed by `6-9`, and sequential/interleaved phase-2 conditions. The
+Hebbian-specific training adapter remains inside each notebook.
+See `hebbian/README.md` for the simple workflow and `hebbian/REPORT.md` for the
+full methodology.
+
 ## Repository structure
 
 - `src/data.py` – dataset download and class-restriction helpers.
