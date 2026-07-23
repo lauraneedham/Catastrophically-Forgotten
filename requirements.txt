@@ -6,3 +6,9 @@ torchvision>=0.17
 tqdm>=4.66
 ipywidgets>=8.1
 pytest>=8.0
+jax
+equinox
+optax
+diffrax
+marimo
+jpc @ git+https://github.com/thebuckleylab/jpc.git
