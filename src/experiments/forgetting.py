@@ -62,9 +62,11 @@ def run_forgetting_experiment(
     num_outputs: int = 10,
     activation_type: str = "sigmoid",
     bias: bool = False,
+    optimizer_type: str = "adam",
     verbose: bool = False,
 ):
     """Run a simple forgetting experiment with a backprop or predictive coding model."""
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if model_type == "backprop":
         model = MultiLayerPerceptron(
             num_inputs=num_inputs,
@@ -73,8 +75,11 @@ def run_forgetting_experiment(
             num_hidden_layers=num_hidden_layers,
             activation_type=activation_type,
             bias=bias,
-        )
-        optimizer = BasicOptimizer(model.parameters(), lr=lr if lr is not None else 0.01)
+        ).to(device)
+        if optimizer_type == "adam":
+            optimizer = torch.optim.Adam(model.parameters(), lr=lr if lr is not None else 1e-3)
+        else:
+            optimizer = BasicOptimizer(model.parameters(), lr=lr if lr is not None else 0.01)
     elif model_type in ["predictive_coding", "pc"]:
         from src.models.predictive_coding import PredictiveCodingMLP
 
@@ -86,7 +91,7 @@ def run_forgetting_experiment(
             activation_type=activation_type,
             bias=bias,
             lr=lr if lr is not None else 1e-3,
-        )
+        ).to(device)
         optimizer = BasicOptimizer(model.parameters(), lr=lr if lr is not None else 1e-3)
     else:
         raise NotImplementedError(f"Model type '{model_type}' is not implemented yet.")
