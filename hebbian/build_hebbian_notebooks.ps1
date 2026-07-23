@@ -124,7 +124,7 @@ HIDDEN_SIZES = __HIDDEN_SIZES__
 BATCH_SIZE = 32
 EPOCHS_PHASE1 = 20
 EPOCHS_PHASE2 = 20
-LEARNING_RATE = 0.01
+LEARNING_RATE = 0.001
 ACTIVATION = "sigmoid"
 BIAS = False
 SEED = 0
@@ -452,7 +452,7 @@ shared data and forgetting functions.
 - Phase 2 sequential: digits **6-9 only**
 - Phase 2 interleaved control: the repository's full **0-9** loader
 - Full MNIST, batch size **32**, and **20 recorded epochs per phase**
-- Learning rate **0.01** for both local hidden and output updates
+- Learning rate **0.001** for both local hidden and output updates
 - Optimizer: **none**; hidden layers never receive backpropagated errors
 
 Run this notebook from top to bottom in a fresh Colab GPU runtime.
@@ -512,7 +512,7 @@ condition checks whether continued access to old examples prevents the loss.
 ## Hyperparameter policy
 
 This locked run does not search hyperparameters: it uses the team's learning
-rate `0.01`. If the phase-1 competence gate fails, any later tuning must use
+rate `0.001`. If the phase-1 competence gate fails, any later tuning must use
 phase-1 or separate IID validation performance only. Never choose a learning
 rate because it produces less forgetting.
 '@)

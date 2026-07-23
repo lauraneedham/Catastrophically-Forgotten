@@ -27,9 +27,9 @@ training on 6-9, every architecture's accuracy on 0-5 fell to **0.00%**.
 
 | Architecture | Old before phase 2 | Old after sequential | New after sequential | Old after interleaved | New after interleaved |
 |---|---:|---:|---:|---:|---:|
-| `784 -> 100 -> 10` | 90.08% | 0.00% | 92.54% | 78.81% | 78.21% |
-| `784 -> 1000 -> 10` | 86.92% | 0.00% | 89.66% | 77.75% | 79.91% |
-| `784 -> 300 -> 300 -> 10` | 81.73% | 0.00% | 82.91% | 69.46% | 72.24% |
+| `784 -> 100 -> 10` | 89.09% | 0.00% | 92.45% | 79.57% | 83.41% |
+| `784 -> 1000 -> 10` | 90.15% | 0.00% | 91.78% | 84.44% | 84.48% |
+| `784 -> 300 -> 300 -> 10` | 83.18% | 0.00% | 91.09% | 78.66% | 74.90% |
 
 In simple words: changing the network's width or depth changed its accuracy,
 but none of the three architectures resisted catastrophic forgetting when old
@@ -44,7 +44,7 @@ complete collapse because the model continued seeing the old task.
 - Backpropagation into hidden layers: none.
 - Activation: sigmoid.
 - Bias: false.
-- Learning rate: `0.01` for both local update types.
+- Learning rate: `0.001` for both local update types.
 
 Using SGD on the hidden layers would change the method into a gradient-trained
 model, so the team's SGD consensus is not applied to this learning rule.
@@ -93,7 +93,9 @@ architecture per runtime, then download the ZIP from the final cell.
 ## Hyperparameters
 
 There is no automated hyperparameter search in the locked notebooks. The
-team-agreed learning rate `0.01` is used directly. A phase-1 competence gate
+cross-rule team setting `0.001` is used directly. It replaced the earlier
+`0.01` run so the learning-rate protocol matches the other learning-rule
+implementations; it was not selected from the forgetting results. A phase-1 competence gate
 stops the experiment before phase 2 if old-class validation accuracy is below
 80%.
 
@@ -103,4 +105,6 @@ choose hyperparameters.
 
 See `REPORT.md` for the full methods, results, limitations, and interpretation.
 The exact combined final metrics are also available in
-`ARCHITECTURE_COMPARISON.csv`.
+`ARCHITECTURE_COMPARISON.csv`. The executed final notebooks and their complete
+evidence are in `FINAL (learning rate 0.001)/`; the earlier 0.01 runs remain as
+a sensitivity comparison in `LEARNING_RATE_SENSITIVITY.csv`.
