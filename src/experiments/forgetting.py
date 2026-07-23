@@ -57,29 +57,27 @@ def run_forgetting_experiment(
     num_epochs_phase2: int = 6,
     lr: Optional[float] = None,
     num_inputs: int = 784,
-    num_hidden: int | Sequence[int] = 100,
-    num_hidden_layers: int = 1,
+    num_hidden: int = 100,
     num_outputs: int = 10,
     activation_type: str = "sigmoid",
     bias: bool = False,
-    optimizer_type: str = "adam",
     verbose: bool = False,
 ):
-    """Run a simple forgetting experiment with a backprop or predictive coding model."""
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    """Run a simple forgetting experiment with a backprop or predictive coding model.
+
+    This matches the reference notebook/proof-of-concept flow: the first epoch
+    trains immediately so phase 1 reflects actual learning and phase 2 shows
+    forgetting on the old-class validation set.
+    """
     if model_type == "backprop":
         model = MultiLayerPerceptron(
             num_inputs=num_inputs,
             num_hidden=num_hidden,
             num_outputs=num_outputs,
-            num_hidden_layers=num_hidden_layers,
             activation_type=activation_type,
             bias=bias,
-        ).to(device)
-        if optimizer_type == "adam":
-            optimizer = torch.optim.Adam(model.parameters(), lr=lr if lr is not None else 1e-3)
-        else:
-            optimizer = BasicOptimizer(model.parameters(), lr=lr if lr is not None else 0.01)
+        )
+        optimizer = BasicOptimizer(model.parameters(), lr=lr if lr is not None else 0.01)
     elif model_type in ["predictive_coding", "pc"]:
         from src.models.predictive_coding import PredictiveCodingMLP
 
@@ -87,11 +85,10 @@ def run_forgetting_experiment(
             num_inputs=num_inputs,
             num_hidden=num_hidden,
             num_outputs=num_outputs,
-            num_hidden_layers=num_hidden_layers,
             activation_type=activation_type,
             bias=bias,
             lr=lr if lr is not None else 1e-3,
-        ).to(device)
+        )
         optimizer = BasicOptimizer(model.parameters(), lr=lr if lr is not None else 1e-3)
     else:
         raise NotImplementedError(f"Model type '{model_type}' is not implemented yet.")
@@ -120,11 +117,8 @@ def run_forgetting_experiment(
 
     return {
         "model": model,
-        "model_type": model_type,
-        "num_hidden": model.hidden_dims,
-        "num_hidden_layers": model.num_hidden_layers,
-        "old_class_acc_trace": [float(x) for x in old_class_acc_trace],
-        "new_class_acc_final": float(new_class_acc_final),
+        "old_class_acc_trace": old_class_acc_trace,
+        "new_class_acc_final": new_class_acc_final,
         "phase1_epochs": num_epochs_phase1,
         "phase1_results": phase1_results,
         "phase2_results": phase2_results,
