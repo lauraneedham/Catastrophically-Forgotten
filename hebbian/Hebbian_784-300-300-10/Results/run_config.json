@@ -1,0 +1,39 @@
+{
+  "repository": "https://github.com/lauraneedham/Catastrophically-Forgotten.git",
+  "branch": "hebbian-learning-v2",
+  "commit": "0b0f223da2a7d51b156de17795a5fc1446320951",
+  "architecture": "784 -> 300 -> 300 -> 10",
+  "hidden_sizes": [
+    300,
+    300
+  ],
+  "old_classes": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "new_classes": [
+    6,
+    7,
+    8,
+    9
+  ],
+  "batch_size": 32,
+  "epochs_phase1": 20,
+  "epochs_phase2": 20,
+  "record_initial_baseline": true,
+  "learning_rate": 0.01,
+  "optimizer": "none",
+  "activation": "sigmoid",
+  "bias": false,
+  "keep_prop": 1.0,
+  "train_prop": 0.8,
+  "seed": 0,
+  "data_split_seed": 0,
+  "minimum_phase1_accuracy": 80.0,
+  "device": "cuda",
+  "torch_version": "2.11.0+cu128"
+}
