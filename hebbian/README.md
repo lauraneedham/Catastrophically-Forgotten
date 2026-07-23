@@ -19,6 +19,23 @@ The same experiment is run with three architectures:
 The notebooks import the shared repository data and experiment functions. They
 do not carry a separate standalone data split or forgetting implementation.
 
+## Final result
+
+All three architectures learned digits 0-5 well enough to pass the predefined
+80% competence gate. They also learned digits 6-9. However, after sequential
+training on 6-9, every architecture's accuracy on 0-5 fell to **0.00%**.
+
+| Architecture | Old before phase 2 | Old after sequential | New after sequential | Old after interleaved | New after interleaved |
+|---|---:|---:|---:|---:|---:|
+| `784 -> 100 -> 10` | 90.08% | 0.00% | 92.54% | 78.81% | 78.21% |
+| `784 -> 1000 -> 10` | 86.92% | 0.00% | 89.66% | 77.75% | 79.91% |
+| `784 -> 300 -> 300 -> 10` | 81.73% | 0.00% | 82.91% | 69.46% | 72.24% |
+
+In simple words: changing the network's width or depth changed its accuracy,
+but none of the three architectures resisted catastrophic forgetting when old
+digits disappeared from training. Interleaving old and new digits prevented
+complete collapse because the model continued seeing the old task.
+
 ## Learning method
 
 - Hidden layers: local Oja subspace Hebbian updates.
@@ -84,5 +101,6 @@ If tuning becomes necessary, select settings using phase-1 or separate IID
 validation only. Forgetting and final test performance must not be used to
 choose hyperparameters.
 
-See `REPORT.md` for the full methods, comparison table, and interpretation
-rules.
+See `REPORT.md` for the full methods, results, limitations, and interpretation.
+The exact combined final metrics are also available in
+`ARCHITECTURE_COMPARISON.csv`.

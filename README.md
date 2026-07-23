@@ -19,8 +19,22 @@ These notebooks import shared `src/data.py` and the unchanged
 `src/experiments/forgetting.py`. They use full MNIST, batch size 32, digits
 `0-5` followed by `6-9`, and sequential/interleaved phase-2 conditions. The
 Hebbian-specific training adapter remains inside each notebook.
-See `hebbian/README.md` for the simple workflow and `hebbian/REPORT.md` for the
-full methodology.
+
+All three final runs learned the first and second tasks, but all retained
+**0.00%** accuracy on digits 0-5 after sequential training on digits 6-9.
+Interleaving old and new digits retained 69-79% old-task accuracy.
+
+| Architecture | Old before phase 2 | Old after sequential | New after sequential | Old after interleaved |
+|---|---:|---:|---:|---:|
+| `784 -> 100 -> 10` | 90.08% | 0.00% | 92.54% | 78.81% |
+| `784 -> 1000 -> 10` | 86.92% | 0.00% | 89.66% | 77.75% |
+| `784 -> 300 -> 300 -> 10` | 81.73% | 0.00% | 82.91% | 69.46% |
+
+The main result is therefore consistent across all three architectures: this
+local Hebbian/Oja rule did not prevent catastrophic forgetting by itself.
+See `hebbian/README.md` for the simple workflow, `hebbian/REPORT.md` for the
+full analysis, and `hebbian/ARCHITECTURE_COMPARISON.csv` for the exact combined
+metrics.
 
 ## Repository structure
 
