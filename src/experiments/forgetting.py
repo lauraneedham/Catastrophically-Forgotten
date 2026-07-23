@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Sequence
+from typing import Any, Dict, Optional
 
 import matplotlib.pyplot as plt
-import numpy as np
 import torch
 
 from src.data import restrict_classes
@@ -63,35 +62,23 @@ def run_forgetting_experiment(
     bias: bool = False,
     verbose: bool = False,
 ):
-    """Run a simple forgetting experiment with a backprop or predictive coding model.
+    """Run a simple forgetting experiment with a backprop model.
 
     This matches the reference notebook/proof-of-concept flow: the first epoch
     trains immediately so phase 1 reflects actual learning and phase 2 shows
     forgetting on the old-class validation set.
     """
-    if model_type == "backprop":
-        model = MultiLayerPerceptron(
-            num_inputs=num_inputs,
-            num_hidden=num_hidden,
-            num_outputs=num_outputs,
-            activation_type=activation_type,
-            bias=bias,
-        )
-        optimizer = BasicOptimizer(model.parameters(), lr=lr if lr is not None else 0.01)
-    elif model_type in ["predictive_coding", "pc"]:
-        from src.models.predictive_coding import PredictiveCodingMLP
-
-        model = PredictiveCodingMLP(
-            num_inputs=num_inputs,
-            num_hidden=num_hidden,
-            num_outputs=num_outputs,
-            activation_type=activation_type,
-            bias=bias,
-            lr=lr if lr is not None else 1e-3,
-        )
-        optimizer = BasicOptimizer(model.parameters(), lr=lr if lr is not None else 1e-3)
-    else:
+    if model_type != "backprop":
         raise NotImplementedError(f"Model type '{model_type}' is not implemented yet.")
+
+    model = MultiLayerPerceptron(
+        num_inputs=num_inputs,
+        num_hidden=num_hidden,
+        num_outputs=num_outputs,
+        activation_type=activation_type,
+        bias=bias,
+    )
+    optimizer = BasicOptimizer(model.parameters(), lr=lr if lr is not None else 0.01)
 
     phase1_results = train_model(
         model,
