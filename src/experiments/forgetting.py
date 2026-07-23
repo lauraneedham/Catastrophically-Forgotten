@@ -74,17 +74,15 @@ def run_forgetting_experiment(
     train_loader_full,
     model_type: str = "backprop",
     condition: str = "sequential",
-    num_epochs_phase1: int = 6,
-    num_epochs_phase2: int = 6,
-    lr: Optional[float] = None,
-    optimizer_type: Optional[str] = None,
-    momentum: float = 0.0,
-    weight_decay: float = 0.0,
+    num_epochs_phase1: int = 20,
+    num_epochs_phase2: int = 20,
+    lr: Optional[float] = 0.001,
+    optimizer_type: Optional[str] = "adam",
     num_inputs: int = 784,
-    num_hidden: int = 100,
+    num_hidden: int = 1000,
     num_outputs: int = 10,
     activation_type: str = "sigmoid",
-    bias: bool = True,
+    bias: bool = False,
     device: Optional[str] = None,
     verbose: bool = False,
 ):
@@ -119,13 +117,6 @@ def run_forgetting_experiment(
             return torch.optim.Adam(
                 model.parameters(),
                 lr=lr if lr is not None else 1e-3,
-            )
-        if optimizer_type == "sgd":
-            return BasicOptimizer(
-                model.parameters(),
-                lr=lr if lr is not None else 0.01,
-                momentum=momentum,
-                weight_decay=weight_decay,
             )
         raise ValueError(f"Unknown optimizer_type '{optimizer_type}'. Use 'adam', 'sgd', or None.")
 
