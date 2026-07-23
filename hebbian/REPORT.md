@@ -10,14 +10,14 @@ training is the control.
 
 The hidden layers learn without backpropagation or an optimizer. The output
 layer uses a local supervised delta update. The locked settings are full MNIST,
-batch size 32, learning rate 0.01, sigmoid activation, no biases, seed 0, and 20
+batch size 32, learning rate 0.001, sigmoid activation, no biases, seed 0, and 20
 recorded epochs per phase.
 
 All three final runs are complete. Every architecture passed the phase-one
 competence gate and learned the new task, but every one retained exactly 0% old
 accuracy after sequential learning. Increasing width to 1000 or adding a second
 300-unit hidden layer therefore did not make this isolated Hebbian/Oja network
-resistant to catastrophic forgetting. Interleaving retained 69-79% old
+resistant to catastrophic forgetting. Interleaving retained 79-84% old
 accuracy, confirming that continued old-data exposure strongly changes the
 outcome. The earlier standalone 300-300 run remains exploratory only because it
 used a different class split and training protocol.
@@ -155,18 +155,24 @@ The weights are changed directly by the local rules.
 
 Although SGD was discussed as a team-wide default, applying SGD to the hidden
 layers would replace the Hebbian learning rule with backpropagation. The common
-number `0.01` is therefore used as the scale of both direct local updates, not
+number `0.001` is therefore used as the scale of both direct local updates, not
 as an SGD learning rate.
 
 ## 6. Hyperparameter policy
 
 The locked notebooks do not conduct an automated search. They use:
 
-- hidden local learning rate: `0.01`;
-- output local learning rate: `0.01`;
+- hidden local learning rate: `0.001`;
+- output local learning rate: `0.001`;
 - sigmoid activation;
 - no bias;
 - row normalization of hidden weights.
+
+The final learning rate was changed from the earlier `0.01` run to `0.001`
+after the team aligned the other learning-rule implementations on `0.001`.
+This protocol decision was the reason for the rerun; the setting was not chosen
+by inspecting which run forgot less. The complete `0.01` results are retained
+as a sensitivity comparison rather than discarded.
 
 A predefined competence gate requires at least 80% old-class validation
 accuracy at the end of phase 1. If the gate fails, the notebook stops before
@@ -196,12 +202,12 @@ notebooks:
 
 | Architecture | Condition | Old before | Old after | Forgetting | New after |
 |---|---|---:|---:|---:|---:|
-| `784-100-10` | Sequential | 90.08% | 0.00% | 90.08 points | 92.54% |
-| `784-100-10` | Interleaved | 90.08% | 78.81% | 11.27 points | 78.21% |
-| `784-1000-10` | Sequential | 86.92% | 0.00% | 86.92 points | 89.66% |
-| `784-1000-10` | Interleaved | 86.92% | 77.75% | 9.17 points | 79.91% |
-| `784-300-300-10` | Sequential | 81.73% | 0.00% | 81.73 points | 82.91% |
-| `784-300-300-10` | Interleaved | 81.73% | 69.46% | 12.27 points | 72.24% |
+| `784-100-10` | Sequential | 89.09% | 0.00% | 89.09 points | 92.45% |
+| `784-100-10` | Interleaved | 89.09% | 79.57% | 9.52 points | 83.41% |
+| `784-1000-10` | Sequential | 90.15% | 0.00% | 90.15 points | 91.78% |
+| `784-1000-10` | Interleaved | 90.15% | 84.44% | 5.71 points | 84.48% |
+| `784-300-300-10` | Sequential | 83.18% | 0.00% | 83.18 points | 91.09% |
+| `784-300-300-10` | Interleaved | 83.18% | 78.66% | 4.52 points | 74.90% |
 
 Do not select only the architecture that forgets least. Report all six rows.
 
@@ -209,39 +215,39 @@ Do not select only the architecture that forgets least. Report all six rows.
 
 The model passed the predefined 80% phase-one gate and therefore demonstrated
 that it could learn the old task before forgetting was tested. Under sequential
-phase-two training, old-class validation accuracy fell from 90.08% to 5.55%
-after the first update epoch, to 0.37% after the second, and reached 0.00% after
-four update epochs. At the end it classified the new digits at 92.54%, showing
+phase-two training, old-class validation accuracy fell from 89.09% to 56.49%
+after the first update epoch, 23.13% after the second, and reached 0.00% after
+17 update epochs. At the end it classified the new digits at 92.45%, showing
 that the zero old accuracy reflected replacement by new learning rather than a
 general failure to train.
 
-Interleaving prevented complete collapse: final old accuracy was 78.81% and new
-accuracy was 78.21%. This is an 11.27-point loss of old-task performance, so the
+Interleaving prevented complete collapse: final old accuracy was 79.57% and new
+accuracy was 83.41%. This is a 9.52-point loss of old-task performance, so the
 control reduced but did not eliminate forgetting. It also lowered new-task
-accuracy by 14.32 points relative to sequential training, illustrating the
+accuracy by 9.04 points relative to sequential training, illustrating the
 stability-plasticity trade-off.
 
 ### 8.2 Interpretation of `784-1000-10`
 
-The wide model reached 86.92% old-task accuracy. Sequential phase two reduced
-old accuracy to 0.55% after the first update epoch, 0.12% after the second, and
-0.00% after the third. Final new-task accuracy was 89.66%.
+The wide model reached 90.15% old-task accuracy. Sequential phase two reduced
+old accuracy to 5.93% after the first update epoch, 1.74% after the second, and
+0.00% after the fifth. Final new-task accuracy was 91.78%.
 
-With interleaving it retained 77.75% old accuracy and reached 79.91% new
-accuracy. Its 9.17-point interleaved forgetting was the smallest of the three
-architectures, although its absolute retained-old accuracy was slightly below
-the 100-unit model because it started phase two with lower competence.
+With interleaving it retained 84.44% old accuracy and reached 84.48% new
+accuracy. Its 5.71-point interleaved forgetting was small, and it achieved the
+best balanced old/new interleaved performance of the three architectures.
 
 ### 8.3 Interpretation of `784-300-300-10`
 
-The two-hidden-layer model passed the gate at 81.73%, the lowest phase-one
+The two-hidden-layer model passed the gate at 83.18%, the lowest phase-one
 accuracy of the three. Under sequential phase two, old-task accuracy reached
-0.00% after the very first update epoch while new-task accuracy eventually
-reached 82.91%.
+0.00% after the second update epoch while new-task accuracy eventually reached
+91.09%.
 
-Interleaving retained 69.46% old accuracy, produced 12.27 points of forgetting,
-and reached 72.24% new accuracy. Under the single shared learning rate, this
-architecture had the weakest competence and control-condition performance.
+Interleaving retained 78.66% old accuracy, produced 4.52 points of forgetting,
+and reached 74.90% new accuracy. Its interleaved forgetting score was the
+smallest, but its new-task control accuracy was also the lowest, so this should
+not be interpreted as an unqualified win.
 
 ### 8.4 Cross-architecture conclusion
 
@@ -249,15 +255,17 @@ Architecture affected basic accuracy, the speed of collapse, and interleaved
 performance, but it did not change the main sequential result:
 
 - all three architectures learned phase one above the predefined 80% gate;
-- all three learned the new task above 82%;
+- all three learned the new task above 91%;
 - all three retained exactly 0% old-task accuracy after sequential phase two;
 - interleaving prevented total collapse in all three.
 
-The 100-unit model achieved the highest phase-one and sequential new-task
-accuracies. The 1000-unit model had the smallest interleaved forgetting and
-highest interleaved new-task accuracy. The two-layer model performed worst
-overall with these fixed settings. A larger or deeper network therefore was not
-automatically better for local Oja learning.
+The 1000-unit model achieved the highest phase-one accuracy and the strongest
+balanced interleaved result. The 100-unit model achieved the highest sequential
+new-task accuracy and forgot most slowly during sequential phase two, although
+it still ended at zero old accuracy. The two-layer model had the smallest
+interleaved forgetting score but the weakest interleaved new-task accuracy.
+Architecture therefore affected the stability-plasticity trade-off without
+changing the final sequential conclusion.
 
 The robust qualitative conclusion is that this local Hebbian/Oja rule did not,
 by itself, protect an isolated network from catastrophic forgetting across any
@@ -266,8 +274,8 @@ explanation more than a learning-rule-only explanation, subject to comparison
 with the other learning rules under the same protocol.
 
 All final runs used branch `hebbian-learning-v2`, commit
-`0b0f223da2a7d51b156de17795a5fc1446320951`, CUDA, PyTorch
-`2.11.0+cu128`, learning rate 0.01, no optimizer, and one baseline plus 19
+`e7c2adc382b9dad1fcaebd55504c5416147fb3d1`, CUDA, PyTorch
+`2.11.0+cu128`, learning rate 0.001, no optimizer, and one baseline plus 19
 update epochs per phase.
 
 These are one-seed validation results. The shared interleaved condition is
@@ -275,6 +283,22 @@ approximately 60/40 old/new and receives a larger phase-two update budget than
 the sequential condition. The fixed learning rate also fit the three
 architectures unequally, so small numerical differences between architectures
 should not be overinterpreted.
+
+### 8.5 Sensitivity to the earlier `0.01` run
+
+Lowering the common local-update scale to `0.001` improved most interleaved
+metrics and substantially improved the deep model's sequential new-task
+accuracy. It also slowed sequential collapse: the 100-unit model reached zero
+old accuracy after 17 updates instead of four, the 1000-unit model after five
+instead of three, and the two-layer model after two instead of one.
+
+The primary endpoint was nevertheless identical at both learning rates: all
+three architectures finished sequential phase two with exactly 0% old-task
+accuracy. The conclusion of complete final forgetting is therefore robust to
+this tenfold learning-rate change. The executed `0.001` artifacts are stored
+under `FINAL (learning rate 0.001)/`; the earlier `0.01` artifacts remain in
+their original architecture folders. Exact side-by-side values are provided in
+`LEARNING_RATE_SENSITIVITY.csv`.
 
 ## 9. Exploratory interrupted run
 
