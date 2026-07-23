@@ -50,7 +50,16 @@ class PredictiveCodingMLP(MultiLayerPerceptron):
 
         jpc_layers = []
         for i in range(len(dims) - 1):
-            act_fn_l = eqx.nn.Identity() if i == 0 else jpc.get_act_fn(act_str)
+            if i == 0:
+                act_fn_l = eqx.nn.Identity()
+            elif act_str == "sigmoid":
+                act_fn_l = jax.nn.sigmoid
+            else:
+                try:
+                    act_fn_l = jpc.get_act_fn(act_str)
+                except ValueError:
+                    act_fn_l = jax.nn.sigmoid
+
             linear = eqx.nn.Linear(dims[i], dims[i + 1], use_bias=self.bias, key=subkeys[i])
             jpc_layers.append(eqx.nn.Sequential([eqx.nn.Lambda(act_fn_l), linear]))
 
