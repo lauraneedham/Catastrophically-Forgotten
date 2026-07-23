@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from typing import Any, Dict, Iterable
+from typing import Any, Dict, Iterable, Optional
 
 import numpy as np
 import torch
@@ -160,7 +160,7 @@ def update_results_by_class_in_place(y, y_pred, result_dict, dataset="train", nu
         result_dict[f"{dataset}_correct_by_class"][int(i)] += num_correct
 
 
-def train_epoch(model: nn.Module, train_loader, valid_loader, optimizer: BasicOptimizer, no_train: bool = False):
+def train_epoch(model: nn.Module, train_loader, valid_loader, optimizer: Optional[BasicOptimizer] = None, no_train: bool = False):
     """Train for one epoch and return aggregate metrics."""
     criterion = nn.NLLLoss()
     epoch_results = {}
@@ -184,10 +184,11 @@ def train_epoch(model: nn.Module, train_loader, valid_loader, optimizer: BasicOp
         # per-class bookkeeping runs in NumPy, so move predictions/targets to CPU
         update_results_by_class_in_place(y.cpu(), y_pred.detach().cpu(), epoch_results, dataset="train", num_classes=model.num_outputs)
 
-        optimizer.zero_grad()
-        if not no_train:
-            loss.backward()
-            optimizer.step()
+        if optimizer is not None:
+            optimizer.zero_grad()
+            if not no_train:
+                loss.backward()
+                optimizer.step()
 
     num_items = len(train_loader.dataset)
     epoch_results["avg_train_losses"] = np.sum(train_losses) / num_items
@@ -217,7 +218,7 @@ def train_model(
     model,
     train_loader,
     valid_loader,
-    optimizer,
+    optimizer=None,
     num_epochs: int = 5,
     verbose: bool = False,
     record_initial_baseline: bool = True,
