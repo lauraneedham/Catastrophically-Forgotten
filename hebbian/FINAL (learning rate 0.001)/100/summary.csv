@@ -1,0 +1,3 @@
+architecture,condition,phase1_old_accuracy,retained_old_accuracy,forgetting,new_class_accuracy,learning_rate,optimizer,seed
+784 -> 100 -> 10,sequential,89.08713694594873,0.0,89.08713694594873,92.45124764101489,0.001,none (direct local Oja and delta updates),0
+784 -> 100 -> 10,interleaved,89.08713694594873,79.57123101169803,9.515905934250696,83.41371356678549,0.001,none (direct local Oja and delta updates),0
