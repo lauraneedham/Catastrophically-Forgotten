@@ -20,3 +20,8 @@ __all__ = [
     "train_model",
     "update_results_by_class_in_place",
 ]
+
+
+def evaluate_accuracy(model: nn.Module, loader):
+    """Compute accuracy of the MLP on a given loader without training on it."""
+    return evaluate_accuracy_stats(model, loader)["accuracy"]
