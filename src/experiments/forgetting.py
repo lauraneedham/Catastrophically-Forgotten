@@ -23,6 +23,12 @@ MODEL_BUILDERS = {
     "hebbian": HebbianMultiLayerPerceptron,
 }
 
+# Model types that update their own weights as a side effect of forward() (e.g.
+# PredictiveCodingMLP.step_batch via jpc.make_pc_step). These must not also
+# receive a real optimizer.step() from the shared training loop, or the model
+# gets a second, uncontrolled gradient-descent update on top of its own rule.
+SELF_UPDATING_MODEL_TYPES = {"predictive_coding", "hebbian"}
+
 
 def build_model(model_type: str, **kwargs):
     """Instantiate a model for the forgetting experiment by ``model_type``."""
@@ -77,7 +83,7 @@ def run_forgetting_experiment(
     num_epochs_phase1: int = 20,
     num_epochs_phase2: int = 20,
     lr: Optional[float] = 0.001,
-    optimizer_type: Optional[str] = "adam",
+    optimizer_type: Optional[str] = "auto",
     num_inputs: int = 784,
     num_hidden: int = 1000,
     num_outputs: int = 10,
@@ -94,6 +100,9 @@ def run_forgetting_experiment(
     """
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    if optimizer_type == "auto":
+        optimizer_type = None if model_type in SELF_UPDATING_MODEL_TYPES else "adam"
 
     model = build_model(
         model_type,
