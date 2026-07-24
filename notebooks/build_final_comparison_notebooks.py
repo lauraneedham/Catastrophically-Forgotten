@@ -123,8 +123,44 @@ RUNNER_CELLS = [
                 ]
             )
 
+        # The full repository requirements include development and marimo
+        # dependencies that are not needed by this runner. Installing them
+        # unpinned makes pip backtrack across incompatible recent JAX
+        # ecosystem releases in Colab. JPC currently requires JAX <= 0.5.2,
+        # so keep this runtime environment explicit and reproducible.
+        colab_runtime_dependencies = [
+            "numpy>=1.26,<2.3",
+            "pandas>=2.0",
+            "matplotlib>=3.8",
+            "scipy>=1.11",
+            "tqdm>=4.66",
+            "jax==0.5.2",
+            "jaxlib==0.5.1",
+            "equinox==0.13.8",
+            "optax==0.2.5",
+            "diffrax==0.7.2",
+            "lineax==0.0.8",
+            (
+                "jpc @ git+https://github.com/thebuckleylab/jpc.git"
+                "@a7015be6249c05ced833ecbf36491bd5d6b9c0db"
+            ),
+        ]
+        print("Installing the pinned Colab runtime dependencies...")
         subprocess.check_call(
-            [sys.executable, "-m", "pip", "install", "-q", "-r", str(REPO_DIR / "requirements.txt")]
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "--disable-pip-version-check",
+                "--retries",
+                "5",
+                "--timeout",
+                "120",
+                "--upgrade-strategy",
+                "only-if-needed",
+                *colab_runtime_dependencies,
+            ]
         )
         os.chdir(REPO_DIR)
         sys.path.insert(0, str(REPO_DIR))
