@@ -132,7 +132,12 @@ def _autograd_rule_directions(
     """Collect a rule's custom-autograd pseudo-gradient as an update."""
     hidden_layer, output_layer = _weight_layers(model)
     probabilities = model(X, y=y)
-    loss = F.nll_loss(torch.log(probabilities.clamp_min(1e-8)), y)
+    # Match the repository's actual BP/FA training objective exactly.
+    # Clamping probabilities at 1e-8 changes the gradient for confidently
+    # misclassified examples—the cases that are especially common after
+    # catastrophic forgetting—and can make even FA's output-layer direction
+    # appear misaligned with ordinary backpropagation.
+    loss = F.nll_loss(torch.log(probabilities), y)
     hidden_grad, output_grad = torch.autograd.grad(
         loss,
         (hidden_layer.weight, output_layer.weight),

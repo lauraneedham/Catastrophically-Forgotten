@@ -10,6 +10,7 @@ from src.analysis.update_metrics import (
     StreamingCoordinateSNR,
     analyze_update_statistics,
     backprop_descent_directions,
+    proposed_rule_directions,
     safe_cosine_similarity,
 )
 
@@ -89,3 +90,43 @@ def test_backprop_analysis_is_self_aligned_and_non_mutating():
     assert np.isfinite(statistics[layer]["snr"])
     assert torch.equal(model.lin1.weight, hidden_before)
     assert torch.equal(model.lin2.weight, output_before)
+
+
+def test_fa_collector_matches_training_loss_for_saturated_output():
+    """Very small target probabilities must not be clipped during analysis."""
+    model = MultiLayerPerceptron(
+        num_inputs=2,
+        num_hidden=2,
+        num_outputs=2,
+        activation_type="sigmoid",
+        bias=False,
+    )
+    with torch.no_grad():
+        model.lin1.weight.zero_()
+        model.lin2.weight.copy_(
+            torch.tensor(
+                [
+                    [30.0, 30.0],
+                    [-30.0, -30.0],
+                ]
+            )
+        )
+
+    X = torch.zeros(4, 2)
+    y = torch.ones(4, dtype=torch.long)
+    probabilities = model(X)
+    assert torch.all(probabilities[:, 1] < 1e-8)
+    assert torch.all(probabilities[:, 1] > 0)
+
+    fa_directions = proposed_rule_directions(
+        model,
+        "feedback_alignment",
+        X,
+        y,
+    )
+    bp_directions = backprop_descent_directions(model, X, y)
+
+    assert safe_cosine_similarity(
+        fa_directions["output_weight"],
+        bp_directions["output_weight"],
+    ) == pytest.approx(1.0)

@@ -1,0 +1,3 @@
+rule,condition,architecture,phase1_old_accuracy,retained_old_accuracy,forgetting,normalized_forgetting,new_class_accuracy,balanced_final_accuracy,learning_rate,optimizer,model_seed,data_split_seed,data_order_seed,device
+feedback_alignment,sequential,784-1000-10,98.92116182572614,0.09681881051175657,98.82434301521438,0.9990212527964205,99.01446844202138,49.55564362626657,0.001,pytorch_adam,0,0,1000,cpu
+feedback_alignment,interleaved,784-1000-10,98.92116182572614,97.95297372060857,0.9681881051175765,0.009787472035794291,97.44181170056616,97.69739271058737,0.001,pytorch_adam,0,0,1000,cpu
