@@ -10,7 +10,7 @@ import torch
 from src.data import restrict_classes
 from src.models.base import BasicOptimizer, MultiLayerPerceptron, evaluate_accuracy_stats, train_model
 from src.models.feedback_alignment import FeedbackAlignmentMLP
-from src.models.hebbian import HebbianMultiLayerPerceptron
+from src.models.hebbian import HebbianMultiLayerPerceptron, train_hebbian_model
 from src.models.predictive_coding import PredictiveCodingMLP
 
 OLD_CLASSES = [0, 1, 2, 3, 4, 5]
@@ -23,10 +23,9 @@ MODEL_BUILDERS = {
     "hebbian": HebbianMultiLayerPerceptron,
 }
 
-# Model types that update their own weights as a side effect of forward() (e.g.
-# PredictiveCodingMLP.step_batch via jpc.make_pc_step). These must not also
-# receive a real optimizer.step() from the shared training loop, or the model
-# gets a second, uncontrolled gradient-descent update on top of its own rule.
+# These model types must not receive an external PyTorch optimizer.
+# Predictive coding updates from forward(X, y); Hebbian learning is dispatched
+# explicitly to train_hebbian_model below.
 SELF_UPDATING_MODEL_TYPES = {"predictive_coding", "hebbian"}
 
 
@@ -42,20 +41,47 @@ def build_model(model_type: str, **kwargs):
     return model_cls(**kwargs)
 
 
-def build_forgetting_loaders(train_set, valid_set, batch_size: int = 32, old_classes=OLD_CLASSES, new_classes=NEW_CLASSES):
-    """Build loaders for old-only, new-only, and interleaved training conditions."""
+def build_forgetting_loaders(
+    train_set,
+    valid_set,
+    batch_size: int = 32,
+    old_classes=OLD_CLASSES,
+    new_classes=NEW_CLASSES,
+    seed: int | None = None,
+):
+    """Build old/new/interleaved loaders with optional private shuffle seeds."""
     train_set_old = restrict_classes(train_set, old_classes)
     valid_set_old = restrict_classes(valid_set, old_classes)
     train_set_new = restrict_classes(train_set, new_classes)
     valid_set_new = restrict_classes(valid_set, new_classes)
 
-    train_loader_old = torch.utils.data.DataLoader(train_set_old, batch_size=batch_size, shuffle=True)
+    def shuffle_generator(offset: int):
+        if seed is None:
+            return None
+        return torch.Generator().manual_seed(int(seed) + offset)
+
+    train_loader_old = torch.utils.data.DataLoader(
+        train_set_old,
+        batch_size=batch_size,
+        shuffle=True,
+        generator=shuffle_generator(0),
+    )
     valid_loader_old = torch.utils.data.DataLoader(valid_set_old, batch_size=batch_size, shuffle=False)
-    train_loader_new = torch.utils.data.DataLoader(train_set_new, batch_size=batch_size, shuffle=True)
+    train_loader_new = torch.utils.data.DataLoader(
+        train_set_new,
+        batch_size=batch_size,
+        shuffle=True,
+        generator=shuffle_generator(1),
+    )
     valid_loader_new = torch.utils.data.DataLoader(valid_set_new, batch_size=batch_size, shuffle=False)
 
     train_set_full_restricted = restrict_classes(train_set, old_classes + new_classes)
-    train_loader_full = torch.utils.data.DataLoader(train_set_full_restricted, batch_size=batch_size, shuffle=True)
+    train_loader_full = torch.utils.data.DataLoader(
+        train_set_full_restricted,
+        batch_size=batch_size,
+        shuffle=True,
+        generator=shuffle_generator(2),
+    )
 
     return {
         "train_loader_old": train_loader_old,
@@ -104,14 +130,28 @@ def run_forgetting_experiment(
     if optimizer_type == "auto":
         optimizer_type = None if model_type in SELF_UPDATING_MODEL_TYPES else "adam"
 
-    model = build_model(
-        model_type,
-        num_inputs=num_inputs,
-        num_hidden=num_hidden,
-        num_outputs=num_outputs,
-        activation_type=activation_type,
-        bias=bias,
-    )
+    if (
+        model_type in SELF_UPDATING_MODEL_TYPES
+        and optimizer_type not in (None, "none")
+    ):
+        raise ValueError(
+            f"{model_type} manages its own learning updates and cannot use "
+            f"external optimizer_type='{optimizer_type}'. Use 'auto' or None."
+        )
+
+    model_kwargs = {
+        "num_inputs": num_inputs,
+        "num_hidden": num_hidden,
+        "num_outputs": num_outputs,
+        "activation_type": activation_type,
+        "bias": bias,
+    }
+    if model_type in {"hebbian", "predictive_coding"} and lr is not None:
+        # These rules create their learning mechanism inside the model, so the
+        # requested experiment rate must be supplied at construction time.
+        model_kwargs["lr"] = lr
+
+    model = build_model(model_type, **model_kwargs)
     model.to(device)
     if verbose:
         print(f"[forgetting] {model_type} on {device}")
@@ -127,29 +167,54 @@ def run_forgetting_experiment(
                 model.parameters(),
                 lr=lr if lr is not None else 1e-3,
             )
+        if optimizer_type == "sgd":
+            # Plain SGD: no momentum and no weight decay.
+            return torch.optim.SGD(
+                model.parameters(),
+                lr=lr if lr is not None else 1e-3,
+                momentum=0.0,
+                weight_decay=0.0,
+            )
         raise ValueError(f"Unknown optimizer_type '{optimizer_type}'. Use 'adam', 'sgd', or None.")
 
-    # A fresh optimizer per phase, so optimizer state (SGD momentum / Adam moment
-    # estimates) does not leak from task 1 into task 2 (per-phase reset, as in
-    # the notebook).
-    phase1_results = train_model(
-        model,
-        train_loader_old,
-        valid_loader_old,
-        make_optimizer(),
-        num_epochs=num_epochs_phase1,
-        verbose=verbose,
-    )
+    if model_type == "hebbian":
+        phase1_results = train_hebbian_model(
+            model,
+            train_loader_old,
+            valid_loader_old,
+            num_epochs=num_epochs_phase1,
+            verbose=verbose,
+        )
+    else:
+        # Preserve the existing BP, FA, and PC phase-one path unchanged.
+        phase1_results = train_model(
+            model,
+            train_loader_old,
+            valid_loader_old,
+            make_optimizer(),
+            num_epochs=num_epochs_phase1,
+            verbose=verbose,
+        )
 
     phase2_loader = train_loader_new if condition == "sequential" else train_loader_full
-    phase2_results = train_model(
-        model,
-        phase2_loader,
-        valid_loader_old,
-        make_optimizer(),
-        num_epochs=num_epochs_phase2,
-        verbose=verbose,
-    )
+    if model_type == "hebbian":
+        phase2_results = train_hebbian_model(
+            model,
+            phase2_loader,
+            valid_loader_old,
+            num_epochs=num_epochs_phase2,
+            verbose=verbose,
+        )
+    else:
+        # Preserve the existing BP, FA, and PC phase-two path unchanged.
+        phase2_results = train_model(
+            model,
+            phase2_loader,
+            valid_loader_old,
+            make_optimizer(),
+            num_epochs=num_epochs_phase2,
+            verbose=verbose,
+        )
 
     old_class_acc_trace = phase1_results["avg_valid_accuracies"] + phase2_results["avg_valid_accuracies"]
     new_class_acc_final = evaluate_accuracy_for_loader(model, valid_loader_new)

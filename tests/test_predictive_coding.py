@@ -1,3 +1,5 @@
+import numpy as np
+import pytest
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 
@@ -26,6 +28,32 @@ def test_predictive_coding_step_batch_updates_weights():
     assert not torch.allclose(model.lin1.weight.data, initial_w1)
 
 
+def test_predictive_coding_proposed_updates_do_not_mutate_model_or_state():
+    model = PredictiveCodingMLP(
+        num_inputs=10,
+        num_hidden=20,
+        num_outputs=5,
+        bias=False,
+    )
+    X = torch.randn(8, 10)
+    y = torch.tensor([0, 1, 2, 3, 4, 0, 1, 2])
+    torch_hidden_before = model.lin1.weight.detach().clone()
+    torch_output_before = model.lin2.weight.detach().clone()
+    jpc_hidden_before = np.asarray(model.jpc_model[0][1].weight).copy()
+    jpc_output_before = np.asarray(model.jpc_model[1][1].weight).copy()
+
+    updates = model.proposed_updates(X, y)
+
+    assert updates["hidden_0_weight"].shape == model.lin1.weight.shape
+    assert updates["output_weight"].shape == model.lin2.weight.shape
+    assert torch.isfinite(updates["hidden_0_weight"]).all()
+    assert torch.isfinite(updates["output_weight"]).all()
+    assert torch.equal(model.lin1.weight, torch_hidden_before)
+    assert torch.equal(model.lin2.weight, torch_output_before)
+    assert np.array_equal(np.asarray(model.jpc_model[0][1].weight), jpc_hidden_before)
+    assert np.array_equal(np.asarray(model.jpc_model[1][1].weight), jpc_output_before)
+
+
 def test_predictive_coding_forgetting_experiment_smoke():
     X_old = torch.randn(32, 784)
     y_old = torch.tensor([0, 1, 2, 3, 4] * 6 + [0, 1])
@@ -50,7 +78,26 @@ def test_predictive_coding_forgetting_experiment_smoke():
         model_type="predictive_coding",
         num_epochs_phase1=2,
         num_epochs_phase2=2,
+        lr=2e-3,
     )
 
     assert "model" in results
+    assert results["model"].lr == 2e-3
     assert len(results["old_class_acc_trace"]) == 4
+
+
+@pytest.mark.parametrize("optimizer_type", ["adam", "sgd"])
+def test_shared_runner_rejects_external_optimizer_for_predictive_coding(
+    optimizer_type,
+):
+    with pytest.raises(ValueError, match="cannot use external optimizer"):
+        run_forgetting_experiment(
+            train_loader_old=None,
+            valid_loader_old=None,
+            train_loader_new=None,
+            valid_loader_new=None,
+            train_loader_full=None,
+            model_type="predictive_coding",
+            optimizer_type=optimizer_type,
+            device="cpu",
+        )

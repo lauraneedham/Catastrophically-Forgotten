@@ -1,6 +1,8 @@
+import pytest
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 
+from src.experiments.forgetting import run_forgetting_experiment
 from src.models.hebbian import HebbianMultiLayerPerceptron, train_hebbian_model
 
 
@@ -64,3 +66,49 @@ def test_hebbian_training_updates_without_autograd_or_optimizer():
     assert not torch.equal(model.hidden_layers[0].weight, initial_hidden)
     assert not torch.equal(model.output_layer.weight, initial_output)
     assert all(parameter.grad is None for parameter in model.parameters())
+
+
+def test_shared_forgetting_runner_dispatches_hebbian_local_updates():
+    torch.manual_seed(2)
+    X = torch.randn(24, 8)
+    y = torch.arange(24) % 3
+    loader = DataLoader(TensorDataset(X, y), batch_size=6, shuffle=False)
+
+    results = run_forgetting_experiment(
+        train_loader_old=loader,
+        valid_loader_old=loader,
+        train_loader_new=loader,
+        valid_loader_new=loader,
+        train_loader_full=loader,
+        model_type="hebbian",
+        num_epochs_phase1=2,
+        num_epochs_phase2=2,
+        num_inputs=8,
+        num_hidden=7,
+        num_outputs=3,
+        lr=0.001,
+        device="cpu",
+    )
+
+    model = results["model"]
+    assert len(results["old_class_acc_trace"]) == 4
+    assert model.hidden_lr == 0.001
+    assert model.output_lr == 0.001
+    assert not torch.equal(model.hidden_layers[0].weight, model.init_weights[0])
+    assert not torch.equal(model.output_layer.weight, model.init_weights[-1])
+    assert all(parameter.grad is None for parameter in model.parameters())
+
+
+@pytest.mark.parametrize("optimizer_type", ["adam", "sgd"])
+def test_shared_runner_rejects_external_optimizer_for_hebbian(optimizer_type):
+    with pytest.raises(ValueError, match="cannot use external optimizer"):
+        run_forgetting_experiment(
+            train_loader_old=None,
+            valid_loader_old=None,
+            train_loader_new=None,
+            valid_loader_new=None,
+            train_loader_full=None,
+            model_type="hebbian",
+            optimizer_type=optimizer_type,
+            device="cpu",
+        )

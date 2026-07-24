@@ -86,3 +86,33 @@ def test_forgetting_experiment_runs_feedback_alignment_end_to_end():
 
     assert isinstance(results["model"], FeedbackAlignmentMLP)
     assert len(results["old_class_acc_trace"]) == 2
+
+
+def test_external_optimizer_models_support_plain_sgd():
+    torch.manual_seed(3)
+    loader = DataLoader(
+        TensorDataset(torch.randn(20, 8), torch.randint(0, 3, (20,))),
+        batch_size=5,
+        shuffle=False,
+    )
+
+    for model_type in ("backprop", "feedback_alignment"):
+        results = run_forgetting_experiment(
+            train_loader_old=loader,
+            valid_loader_old=loader,
+            train_loader_new=loader,
+            valid_loader_new=loader,
+            train_loader_full=loader,
+            model_type=model_type,
+            optimizer_type="sgd",
+            lr=0.05,
+            num_epochs_phase1=2,
+            num_epochs_phase2=1,
+            num_inputs=8,
+            num_hidden=4,
+            num_outputs=3,
+            device="cpu",
+        )
+
+        model = results["model"]
+        assert not torch.equal(model.lin1.weight, model.init_lin1_weight)

@@ -13,10 +13,23 @@ import torch
 import torchvision
 
 
-def download_mnist(train_prop: float = 0.8, keep_prop: float = 1.0):
-    """Download MNIST and return train/validation/test splits."""
+def download_mnist(
+    train_prop: float = 0.8,
+    keep_prop: float = 1.0,
+    seed: int | None = None,
+):
+    """Download MNIST and return train/validation/test splits.
+
+    ``seed=None`` preserves the original global-RNG behavior. Passing a seed
+    creates a private split generator so every learning rule can use exactly
+    the same train/validation indices without depending on model
+    initialization or other random-number consumption.
+    """
     valid_prop = 1 - train_prop
     discard_prop = 1 - keep_prop
+    split_generator = (
+        None if seed is None else torch.Generator().manual_seed(int(seed))
+    )
 
     transform = torchvision.transforms.Compose(
         [
@@ -40,10 +53,12 @@ def download_mnist(train_prop: float = 0.8, keep_prop: float = 1.0):
         train_set, valid_set, _ = torch.utils.data.random_split(
             full_train_set,
             [train_prop * keep_prop, valid_prop * keep_prop, discard_prop],
+            generator=split_generator,
         )
         test_set, _ = torch.utils.data.random_split(
             full_test_set,
             [keep_prop, discard_prop],
+            generator=split_generator,
         )
     else:
         # keep_prop >= 1.0: use all of MNIST (the notebook's setting). Only split
@@ -52,6 +67,7 @@ def download_mnist(train_prop: float = 0.8, keep_prop: float = 1.0):
         train_set, valid_set = torch.utils.data.random_split(
             full_train_set,
             [train_prop, valid_prop],
+            generator=split_generator,
         )
         test_set = full_test_set
 

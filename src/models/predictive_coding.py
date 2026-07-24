@@ -103,6 +103,55 @@ class PredictiveCodingMLP(MultiLayerPerceptron):
 
         return super().forward(X)
 
+    def proposed_updates(
+        self,
+        X: torch.Tensor,
+        y: torch.Tensor,
+    ) -> dict[str, torch.Tensor]:
+        """Return one JPC step's weight deltas without mutating the model.
+
+        JAX and Optax are functional: ``jpc.make_pc_step`` returns a new model
+        and optimizer state.  By not assigning either result back to this
+        instance, the analysis can inspect the predictive-coding parameter
+        change at a checkpoint without advancing training.
+        """
+        X_np = X.detach().cpu().numpy().reshape(-1, self.num_inputs).astype(np.float32)
+        y_np = y.detach().cpu().numpy()
+        if y_np.ndim == 1:
+            y_onehot = np.zeros((len(y_np), self.num_outputs), dtype=np.float32)
+            y_onehot[np.arange(len(y_np)), y_np] = 1.0
+        else:
+            y_onehot = y_np.astype(np.float32)
+
+        result = jpc.make_pc_step(
+            model=self.jpc_model,
+            optim=self.jpc_optim,
+            opt_state=self.jpc_opt_state,
+            input=X_np,
+            output=y_onehot,
+        )
+        proposed_model = result["model"]
+
+        hidden_delta = np.asarray(
+            proposed_model[0][1].weight - self.jpc_model[0][1].weight
+        ).copy()
+        output_delta = np.asarray(
+            proposed_model[1][1].weight - self.jpc_model[1][1].weight
+        ).copy()
+
+        return {
+            "hidden_0_weight": torch.as_tensor(
+                hidden_delta,
+                dtype=self.lin1.weight.dtype,
+                device=self.lin1.weight.device,
+            ),
+            "output_weight": torch.as_tensor(
+                output_delta,
+                dtype=self.lin2.weight.dtype,
+                device=self.lin2.weight.device,
+            ),
+        }
+
     def forward(self, X: torch.Tensor, y: torch.Tensor | None = None) -> torch.Tensor:
         """Standard forward pass. If training with y provided, runs step_batch."""
         if self.training and y is not None:
