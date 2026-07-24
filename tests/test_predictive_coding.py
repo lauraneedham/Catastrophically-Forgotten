@@ -1,10 +1,12 @@
 import numpy as np
 import pytest
 import torch
+import jax
 from torch.utils.data import DataLoader, TensorDataset
 
 from src.models.predictive_coding import PredictiveCodingMLP
 from src.models.base import BasicOptimizer, train_model
+from src.experiments.comparative import _run_recorded_epoch
 from src.experiments.forgetting import run_forgetting_experiment
 
 
@@ -52,6 +54,77 @@ def test_predictive_coding_proposed_updates_do_not_mutate_model_or_state():
     assert torch.equal(model.lin2.weight, torch_output_before)
     assert np.array_equal(np.asarray(model.jpc_model[0][1].weight), jpc_hidden_before)
     assert np.array_equal(np.asarray(model.jpc_model[1][1].weight), jpc_output_before)
+
+
+def test_predictive_coding_recorded_baseline_does_not_update_weights():
+    model = PredictiveCodingMLP(
+        num_inputs=10,
+        num_hidden=20,
+        num_outputs=5,
+        bias=False,
+    )
+    loader = DataLoader(
+        TensorDataset(torch.randn(8, 10), torch.arange(8) % 5),
+        batch_size=4,
+        shuffle=False,
+    )
+    hidden_before = np.asarray(model.jpc_model[0][1].weight).copy()
+    output_before = np.asarray(model.jpc_model[1][1].weight).copy()
+
+    results = _run_recorded_epoch(
+        model,
+        "predictive_coding",
+        loader,
+        loader,
+        optimizer=None,
+        no_train=True,
+    )
+
+    assert "avg_valid_accuracies" in results
+    assert np.array_equal(np.asarray(model.jpc_model[0][1].weight), hidden_before)
+    assert np.array_equal(np.asarray(model.jpc_model[1][1].weight), output_before)
+
+
+def test_predictive_coding_optimizer_reset_preserves_weights_and_clears_moments():
+    model = PredictiveCodingMLP(
+        num_inputs=10,
+        num_hidden=20,
+        num_outputs=5,
+        bias=False,
+    )
+
+    def state_arrays():
+        return [
+            np.asarray(leaf).copy()
+            for leaf in jax.tree_util.tree_leaves(model.jpc_opt_state)
+            if hasattr(leaf, "shape")
+        ]
+
+    initial_state = state_arrays()
+    model.step_batch(torch.randn(8, 10), torch.arange(8) % 5)
+    advanced_state = state_arrays()
+    assert any(
+        not np.array_equal(before, after)
+        for before, after in zip(initial_state, advanced_state)
+    )
+
+    hidden_before_reset = np.asarray(model.jpc_model[0][1].weight).copy()
+    output_before_reset = np.asarray(model.jpc_model[1][1].weight).copy()
+    model.reset_optimizer_state()
+    reset_state = state_arrays()
+
+    assert all(
+        np.array_equal(before, after)
+        for before, after in zip(initial_state, reset_state)
+    )
+    assert np.array_equal(
+        np.asarray(model.jpc_model[0][1].weight),
+        hidden_before_reset,
+    )
+    assert np.array_equal(
+        np.asarray(model.jpc_model[1][1].weight),
+        output_before_reset,
+    )
 
 
 def test_predictive_coding_forgetting_experiment_smoke():

@@ -134,8 +134,7 @@ RUNNER_CELLS = [
             "matplotlib>=3.8",
             "scipy>=1.11",
             "tqdm>=4.66",
-            "jax==0.5.2",
-            "jaxlib==0.5.1",
+            "jax[cuda12-local]==0.5.2",
             "equinox==0.13.8",
             "optax==0.2.5",
             "diffrax==0.7.2",
@@ -185,7 +184,11 @@ RUNNER_CELLS = [
     code(
         """
         import torch
+        import equinox
+        import jax
+        import optax
 
+        from src.analysis.update_metrics import UPDATE_METRIC_VERSION
         from src.data import download_mnist
         from src.experiments.comparative import (
             ComparativeConfig,
@@ -196,6 +199,7 @@ RUNNER_CELLS = [
 
         RULE_TO_RUN = "backprop"  # change to one FINAL_RULES value per session
         COLLECT_UPDATE_METRICS = True
+        REQUIRE_GPU = True
 
         config = ComparativeConfig(
             num_inputs=784,
@@ -217,11 +221,26 @@ RUNNER_CELLS = [
             phase2_analysis_epochs=(1, 5, 10, 20),
         )
         config.validate()
+        assert UPDATE_METRIC_VERSION == 2
         assert RULE_TO_RUN in FINAL_RULES
         DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        if REQUIRE_GPU:
+            assert DEVICE == "cuda", (
+                "A GPU runtime is required for these long final runs. In "
+                "Colab choose Runtime > Change runtime type > GPU, then "
+                "restart from the setup cell."
+            )
         print("Rule:", RULE_TO_RUN)
         print("Device:", DEVICE)
+        print("JAX backend:", jax.default_backend())
+        print("JAX devices:", jax.devices())
+        print("Update-metric version:", UPDATE_METRIC_VERSION)
         print("Architecture:", config.architecture)
+        if RULE_TO_RUN == "predictive_coding" and DEVICE == "cuda":
+            assert jax.default_backend() == "gpu", (
+                "Predictive coding would run through JAX on CPU. Stop before "
+                "the smoke/full run and fix the Colab GPU runtime."
+            )
         """
     ),
     markdown(
@@ -285,8 +304,44 @@ RUNNER_CELLS = [
                 collect_update_metrics=True,
                 verbose=False,
             )
+            assert smoke_result["phase1_conditions_match"]
+            assert len(smoke_result["traces"]) == 8
+            for condition in ("sequential", "interleaved"):
+                condition_traces = [
+                    row
+                    for row in smoke_result["traces"]
+                    if row["condition"] == condition
+                ]
+                assert len(condition_traces) == 4
+                assert sum(row["trained"] for row in condition_traces) == 2
+
+            smoke_updates = smoke_result["update_metrics"]
+            assert len(smoke_updates) == 32
+            assert all(
+                row["update_metric_version"] == 2
+                and row["finite_coordinate_fraction"] == 1.0
+                and row["cosine_valid_batches"] == 1
+                and row["zero_or_invalid_cosine_batches"] == 0
+                for row in smoke_updates
+            )
+            if RULE_TO_RUN == "backprop":
+                assert all(
+                    abs(row["cosine_mean"] - 1.0) < 1e-6
+                    for row in smoke_updates
+                )
+            if RULE_TO_RUN == "feedback_alignment":
+                assert all(
+                    abs(row["cosine_mean"] - 1.0) < 1e-6
+                    for row in smoke_updates
+                    if row["layer"] == "output_weight"
+                )
             print("Smoke test passed.")
             print(smoke_result["summaries"])
+            import gc
+            del smoke_result
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
         """
     ),
     markdown(
@@ -311,6 +366,28 @@ RUNNER_CELLS = [
         assert result["phase1_conditions_match"], (
             "Sequential and interleaved phase-one endpoints did not match."
         )
+        assert len(result["traces"]) == 80
+        assert sum(row["trained"] for row in result["traces"]) == 76
+        if COLLECT_UPDATE_METRICS:
+            assert len(result["update_metrics"]) == 48
+            assert all(
+                row["update_metric_version"] == 2
+                and row["finite_coordinate_fraction"] == 1.0
+                and row["cosine_valid_batches"] == 8
+                and row["zero_or_invalid_cosine_batches"] == 0
+                for row in result["update_metrics"]
+            )
+            if RULE_TO_RUN == "backprop":
+                assert all(
+                    abs(row["cosine_mean"] - 1.0) < 1e-6
+                    for row in result["update_metrics"]
+                )
+            if RULE_TO_RUN == "feedback_alignment":
+                assert all(
+                    abs(row["cosine_mean"] - 1.0) < 1e-6
+                    for row in result["update_metrics"]
+                    if row["layer"] == "output_weight"
+                )
         print("Run complete.")
         """
     ),
@@ -452,6 +529,10 @@ RUNNER_CELLS = [
             ).strip(),
             "python": platform.python_version(),
             "torch": torch.__version__,
+            "jax": jax.__version__,
+            "jax_backend": jax.default_backend(),
+            "equinox": equinox.__version__,
+            "optax": optax.__version__,
             "device": DEVICE,
         }
         save_rule_experiment(result, rule_output_dir)
@@ -516,6 +597,10 @@ COMBINER_CELLS = [
             frames = []
             for path in paths:
                 frame = pd.read_csv(path)
+                if "rule" not in frame.columns:
+                    # Performance traces intentionally store no repeated rule
+                    # column; the runner ZIP's parent directory is canonical.
+                    frame["rule"] = path.parent.name
                 frame["source_file"] = str(path)
                 frames.append(frame)
             return pd.concat(frames, ignore_index=True)
@@ -548,6 +633,107 @@ COMBINER_CELLS = [
             raise RuntimeError("At least one run used the wrong architecture.")
         if not np.allclose(performance_df["learning_rate"], 0.001):
             raise RuntimeError("At least one run used the wrong learning rate.")
+        for seed_column, expected in (
+            ("model_seed", 0),
+            ("data_split_seed", 0),
+            ("data_order_seed", 1000),
+        ):
+            if not (performance_df[seed_column] == expected).all():
+                raise RuntimeError(
+                    f"At least one run used the wrong {seed_column}."
+                )
+        expected_optimizers = {
+            "backprop": "pytorch_adam",
+            "feedback_alignment": "pytorch_adam",
+            "predictive_coding": "internal_optax_adam",
+            "hebbian": "none",
+        }
+        for rule, expected_optimizer in expected_optimizers.items():
+            observed = set(
+                performance_df.loc[
+                    performance_df["rule"] == rule,
+                    "optimizer",
+                ]
+            )
+            if observed != {expected_optimizer}:
+                raise RuntimeError(
+                    f"{rule} used optimizer metadata {observed}, expected "
+                    f"{expected_optimizer}."
+                )
+        if (performance_df["phase1_old_accuracy"] < 80.0).any():
+            failing = performance_df.loc[
+                performance_df["phase1_old_accuracy"] < 80.0,
+                ["rule", "condition", "phase1_old_accuracy"],
+            ]
+            display(failing)
+            raise RuntimeError("At least one rule failed the competence gate.")
+
+        for rule in required_rules:
+            phase1_values = performance_df.loc[
+                performance_df["rule"] == rule,
+                "phase1_old_accuracy",
+            ].to_numpy()
+            if not np.allclose(phase1_values, phase1_values[0], atol=1e-6):
+                raise RuntimeError(
+                    f"{rule} sequential/interleaved phase-one endpoints differ."
+                )
+
+        for (rule, condition), trace_group in traces_df.groupby(
+            ["rule", "condition"]
+        ):
+            phase_counts = trace_group.groupby("phase").size().to_dict()
+            trained_count = int(
+                trace_group["trained"]
+                .astype(str)
+                .str.lower()
+                .eq("true")
+                .sum()
+            )
+            if phase_counts != {1: 20, 2: 20} or trained_count != 38:
+                raise RuntimeError(
+                    f"{rule}/{condition} has phase rows {phase_counts} and "
+                    f"{trained_count} trained rows; expected 20+20 rows with "
+                    "one non-training baseline per phase."
+                )
+
+        if "update_metric_version" not in update_df.columns:
+            raise RuntimeError(
+                "No versioned update metrics were found. The FA/PC/Hebbian "
+                "runs must use the corrected runner."
+            )
+        for rule in required_rules - {"backprop"}:
+            versions = set(
+                update_df.loc[
+                    update_df["rule"] == rule,
+                    "update_metric_version",
+                ].dropna()
+            )
+            if versions != {2}:
+                raise RuntimeError(
+                    f"{rule} uses update-metric versions {versions}; expected 2."
+                )
+        for (rule, condition), metric_group in update_df.groupby(
+            ["rule", "condition"]
+        ):
+            if len(metric_group) != 24:
+                raise RuntimeError(
+                    f"{rule}/{condition} has {len(metric_group)} update rows; "
+                    "expected 24."
+                )
+            if not np.allclose(
+                metric_group["finite_coordinate_fraction"],
+                1.0,
+            ):
+                raise RuntimeError(
+                    f"{rule}/{condition} contains non-finite update coordinates."
+                )
+            if not (
+                (metric_group["cosine_valid_batches"] == 8)
+                & (metric_group["zero_or_invalid_cosine_batches"] == 0)
+            ).all():
+                raise RuntimeError(
+                    f"{rule}/{condition} has missing or invalid cosine probes."
+                )
 
         duplicates = performance_df.duplicated(["rule", "condition"], keep=False)
         if duplicates.any():
@@ -773,10 +959,11 @@ COMBINER_CELLS = [
                 "",
                 "## Limitations",
                 "- Results use one seed and support descriptive conclusions only.",
-                "- The first recorded epoch is a baseline for BP, FA, and Hebbian; "
-                "PC updates internally during that pass.",
+                "- Every phase contains one non-training baseline followed by "
+                "19 actual training passes.",
                 "- PC update cosine uses the non-mutating JPC/Optax parameter delta; "
-                "the other rules expose pre-optimizer learning directions.",
+                "BP/FA expose pre-optimizer learning directions, while Hebbian "
+                "uses its exact normalized local parameter delta.",
                 "- SNR and cosine are signal-consistency and directional-alignment "
                 "proxies, not literal statistical variance and bias.",
             ]

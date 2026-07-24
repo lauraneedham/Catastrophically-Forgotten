@@ -64,6 +64,12 @@ class PredictiveCodingMLP(MultiLayerPerceptron):
 
         self.sync_jpc_to_pytorch()
 
+    def reset_optimizer_state(self) -> None:
+        """Reset Optax moments without changing the predictive-coding weights."""
+        self.jpc_opt_state = self.jpc_optim.init(
+            (eqx.filter(self.jpc_model, eqx.is_array), None)
+        )
+
     def sync_jpc_to_pytorch(self) -> None:
         """Copy weights and biases from JPC model into PyTorch parameters."""
         with torch.no_grad():

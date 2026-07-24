@@ -28,6 +28,7 @@ import torch.nn.functional as F
 
 
 LAYER_KEYS = ("hidden_weight", "output_weight")
+UPDATE_METRIC_VERSION = 2
 RULE_ALIASES = {
     "bp": "backprop",
     "backpropagation": "backprop",
@@ -131,13 +132,15 @@ def _autograd_rule_directions(
 ) -> dict[str, torch.Tensor]:
     """Collect a rule's custom-autograd pseudo-gradient as an update."""
     hidden_layer, output_layer = _weight_layers(model)
-    probabilities = model(X, y=y)
-    # Match the repository's actual BP/FA training objective exactly.
-    # Clamping probabilities at 1e-8 changes the gradient for confidently
-    # misclassified examples—the cases that are especially common after
-    # catastrophic forgetting—and can make even FA's output-layer direction
-    # appear misaligned with ordinary backpropagation.
-    loss = F.nll_loss(torch.log(probabilities), y)
+    # Reconstruct the same forward computation up to the logits, retaining the
+    # FA layers' custom backward functions. Cross entropy is mathematically
+    # equivalent to the training code's NLL(log(softmax(logits))) but remains
+    # numerically stable for confidently misclassified examples. Clamping the
+    # probabilities changes the direction precisely after severe forgetting.
+    flattened = X.reshape(-1, int(model.num_inputs))
+    hidden = _activation(hidden_layer(flattened), model.activation_type)
+    logits = output_layer(hidden)
+    loss = F.cross_entropy(logits, y)
     hidden_grad, output_grad = torch.autograd.grad(
         loss,
         (hidden_layer.weight, output_layer.weight),
@@ -152,16 +155,25 @@ def _autograd_rule_directions(
 
 def _explicit_rule_directions(
     model,
+    rule: str,
     X: torch.Tensor,
     y: torch.Tensor,
 ) -> dict[str, torch.Tensor]:
     """Map a model's explicit proposed updates onto the shared layer names."""
-    if not hasattr(model, "proposed_updates"):
+    proposal_method_name = (
+        "proposed_parameter_deltas"
+        if rule == "hebbian"
+        and hasattr(model, "proposed_parameter_deltas")
+        else "proposed_updates"
+    )
+    if not hasattr(model, proposal_method_name):
         raise TypeError(
-            f"{type(model).__name__} does not expose proposed_updates(X, y)."
+            f"{type(model).__name__} does not expose "
+            f"{proposal_method_name}(X, y)."
         )
 
-    raw_updates: Mapping[str, torch.Tensor] = model.proposed_updates(X, y)
+    proposal_method = getattr(model, proposal_method_name)
+    raw_updates: Mapping[str, torch.Tensor] = proposal_method(X, y)
     hidden_keys = sorted(
         key
         for key in raw_updates
@@ -205,7 +217,7 @@ def proposed_rule_directions(
             raise ValueError(
                 "Batch-centred Hebbian/Oja analysis requires batch size >= 2."
             )
-        directions = _explicit_rule_directions(model, X, y)
+        directions = _explicit_rule_directions(model, rule, X, y)
     else:
         raise ValueError(f"Unsupported learning rule '{rule}'.")
 

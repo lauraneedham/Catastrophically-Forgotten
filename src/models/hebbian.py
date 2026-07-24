@@ -168,6 +168,41 @@ class HebbianMultiLayerPerceptron(nn.Module):
             ).detach().clone()
             return updates
 
+    def proposed_parameter_deltas(
+        self,
+        X: torch.Tensor,
+        y: torch.Tensor,
+    ) -> dict[str, torch.Tensor]:
+        """Return the exact one-step parameter changes without mutating.
+
+        The training step normalizes each hidden weight row after applying the
+        Oja direction. That normalization can rotate the net parameter change,
+        so update-direction analysis must include it rather than inspecting the
+        pre-normalization Oja term alone.
+        """
+        with torch.no_grad():
+            local_directions = self.proposed_updates(X, y)
+            deltas: dict[str, torch.Tensor] = {}
+            for layer_index, layer in enumerate(self.hidden_layers):
+                proposed_weight = layer.weight + (
+                    self.hidden_lr
+                    * local_directions[f"hidden_{layer_index}_weight"]
+                )
+                if self.normalize_hidden:
+                    norms = proposed_weight.norm(
+                        dim=1,
+                        keepdim=True,
+                    ).clamp_min(self.eps)
+                    proposed_weight = proposed_weight / norms
+                deltas[f"hidden_{layer_index}_weight"] = (
+                    proposed_weight - layer.weight
+                ).detach().clone()
+
+            deltas["output_weight"] = (
+                self.output_lr * local_directions["output_weight"]
+            ).detach().clone()
+            return deltas
+
     def local_update(self, X: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         """Apply one local-learning step and return the pre-update probabilities."""
         with torch.no_grad():

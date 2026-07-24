@@ -20,6 +20,7 @@ import numpy as np
 import torch
 
 from src.analysis.update_metrics import (
+    UPDATE_METRIC_VERSION,
     analyze_update_statistics,
     canonical_rule_name,
     update_statistics_records,
@@ -154,6 +155,16 @@ def _run_recorded_epoch(
     no_train: bool,
 ):
     rule = canonical_rule_name(rule)
+    if rule == "predictive_coding" and no_train:
+        # PredictiveCodingMLP updates inside forward(X, y) while in training
+        # mode, so the generic train_epoch no_train flag cannot prevent its
+        # internal JPC step. Return a genuinely non-mutating baseline instead.
+        return {
+            "avg_valid_accuracies": evaluate_accuracy_for_loader(
+                model,
+                valid_loader,
+            )
+        }
     if rule == "hebbian":
         return train_hebbian_epoch(
             model,
@@ -200,6 +211,7 @@ def _collect_checkpoint_metrics(
         for record in split_records:
             record["condition"] = condition
             record["architecture"] = config.architecture
+            record["update_metric_version"] = UPDATE_METRIC_VERSION
         records.extend(split_records)
     return records
 
@@ -267,7 +279,7 @@ def run_rule_condition(
                 "condition": condition,
                 "phase": 1,
                 "recorded_epoch": recorded_epoch,
-                "trained": not no_train or rule == "predictive_coding",
+                "trained": not no_train,
                 "old_accuracy": float(epoch_results["avg_valid_accuracies"]),
                 "new_accuracy": float(
                     evaluate_accuracy_for_loader(
@@ -306,6 +318,11 @@ def run_rule_condition(
         if condition == "sequential"
         else loaders["train_loader_full"]
     )
+    if rule == "predictive_coding":
+        # BP and FA receive a freshly constructed Adam optimizer at the task
+        # boundary. Reset PC's internal Optax Adam moments at the same point
+        # while preserving its learned weights.
+        model.reset_optimizer_state()
     phase2_optimizer = _make_external_optimizer(model, rule, config)
     analysis_epochs = set(config.phase2_analysis_epochs)
     for recorded_epoch in range(1, config.phase2_recorded_epochs + 1):
@@ -329,7 +346,7 @@ def run_rule_condition(
                 "condition": condition,
                 "phase": 2,
                 "recorded_epoch": recorded_epoch,
-                "trained": not no_train or rule == "predictive_coding",
+                "trained": not no_train,
                 "old_accuracy": old_accuracy,
                 "new_accuracy": new_accuracy,
             }

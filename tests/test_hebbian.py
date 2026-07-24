@@ -1,3 +1,5 @@
+import copy
+
 import pytest
 import torch
 from torch.utils.data import DataLoader, TensorDataset
@@ -66,6 +68,40 @@ def test_hebbian_training_updates_without_autograd_or_optimizer():
     assert not torch.equal(model.hidden_layers[0].weight, initial_hidden)
     assert not torch.equal(model.output_layer.weight, initial_output)
     assert all(parameter.grad is None for parameter in model.parameters())
+
+
+def test_proposed_parameter_deltas_match_normalized_training_step():
+    torch.manual_seed(4)
+    model = HebbianMultiLayerPerceptron(
+        num_inputs=8,
+        num_hidden=7,
+        num_outputs=3,
+        lr=0.001,
+        normalize_hidden=True,
+    )
+    trained_copy = copy.deepcopy(model)
+    X = torch.randn(12, 8)
+    y = torch.arange(12) % 3
+    hidden_before = model.hidden_layers[0].weight.detach().clone()
+    output_before = model.output_layer.weight.detach().clone()
+
+    proposed = model.proposed_parameter_deltas(X, y)
+    trained_copy.local_update(X, y)
+
+    assert torch.allclose(
+        proposed["hidden_0_weight"],
+        trained_copy.hidden_layers[0].weight - model.hidden_layers[0].weight,
+        atol=1e-7,
+        rtol=1e-5,
+    )
+    assert torch.allclose(
+        proposed["output_weight"],
+        trained_copy.output_layer.weight - model.output_layer.weight,
+        atol=1e-7,
+        rtol=1e-5,
+    )
+    assert torch.equal(model.hidden_layers[0].weight, hidden_before)
+    assert torch.equal(model.output_layer.weight, output_before)
 
 
 def test_shared_forgetting_runner_dispatches_hebbian_local_updates():

@@ -1,9 +1,15 @@
+import pytest
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 
 from src.experiments.forgetting import build_model, run_forgetting_experiment
 from src.models.base import BasicOptimizer, MultiLayerPerceptron, train_model
 from src.models.feedback_alignment import FeedbackAlignmentMLP, LinearFAModule
+from src.analysis.update_metrics import (
+    backprop_descent_directions,
+    proposed_rule_directions,
+    safe_cosine_similarity,
+)
 
 
 def test_feedback_alignment_forward_returns_probabilities_over_sigmoid_fa_layers():
@@ -21,6 +27,37 @@ def test_feedback_alignment_forward_returns_probabilities_over_sigmoid_fa_layers
     assert isinstance(model.lin1, LinearFAModule)
     assert isinstance(model.lin2, LinearFAModule)
     assert model.activation_type == "sigmoid"
+
+
+def test_feedback_alignment_output_update_stays_bp_aligned_when_saturated():
+    model = FeedbackAlignmentMLP(
+        num_inputs=2,
+        num_hidden=2,
+        num_outputs=2,
+        activation_type="sigmoid",
+        bias=False,
+    )
+    with torch.no_grad():
+        model.lin1.weight.zero_()
+        model.lin2.weight.copy_(
+            torch.tensor(
+                [
+                    [30.0, 30.0],
+                    [-30.0, -30.0],
+                ]
+            )
+        )
+
+    X = torch.zeros(4, 2)
+    y = torch.ones(4, dtype=torch.long)
+    assert torch.all(model(X)[:, 1] < 1e-8)
+
+    fa = proposed_rule_directions(model, "feedback_alignment", X, y)
+    bp = backprop_descent_directions(model, X, y)
+    assert safe_cosine_similarity(
+        fa["output_weight"],
+        bp["output_weight"],
+    ) == pytest.approx(1.0)
 
 
 def test_backward_routes_gradient_through_fixed_feedback_weights():
